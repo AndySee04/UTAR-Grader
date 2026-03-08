@@ -1,0 +1,307 @@
+import httpx
+import json
+import time
+from typing import Optional, Dict, Any, List
+from dataclasses import dataclass
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config import OLLAMA_BASE_URL, OLLAMA_MODEL
+
+
+@dataclass
+class LLMResponse:
+    """Response from LLM."""
+    raw_response: str
+    parsed_response: Optional[Dict[str, Any]]
+    model_used: str
+    processing_time_ms: int
+    tokens_used: Optional[int] = None
+
+
+class LLMService:
+    """Service for LLM operations using Ollama."""
+    
+    def __init__(self, base_url: str = OLLAMA_BASE_URL, model: str = OLLAMA_MODEL):
+        self.base_url = base_url
+        self.model = model
+        self.timeout = 120.0  # 2 minutes timeout for LLM calls
+    
+    async def _call_ollama(self, prompt: str, system_prompt: Optional[str] = None) -> LLMResponse:
+        """
+        Call Ollama API.
+        
+        Args:
+            prompt: User prompt
+            system_prompt: Optional system prompt
+            
+        Returns:
+            LLMResponse object
+        """
+        start_time = time.time()
+        
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,  # Lower for more consistent outputs
+                "num_predict": 2048
+            }
+        }
+        
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                f"{self.base_url}/api/chat",
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        raw_response = result.get("message", {}).get("content", "")
+        
+        # Try to parse JSON from response
+        parsed = self._try_parse_json(raw_response)
+        
+        return LLMResponse(
+            raw_response=raw_response,
+            parsed_response=parsed,
+            model_used=self.model,
+            processing_time_ms=processing_time,
+            tokens_used=result.get("eval_count")
+        )
+    
+    def _try_parse_json(self, text: str) -> Optional[Dict[str, Any]]:
+        """Try to extract and parse JSON from response text."""
+        # Try direct parse
+        try:
+            return json.loads(text)
+        except:
+            pass
+        
+        # Try to find JSON in markdown code block
+        import re
+        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1).strip())
+            except:
+                pass
+        
+        # Try to find JSON object/array in text
+        for start_char, end_char in [('{', '}'), ('[', ']')]:
+            start = text.find(start_char)
+            if start != -1:
+                # Find matching end
+                depth = 0
+                for i, char in enumerate(text[start:], start):
+                    if char == start_char:
+                        depth += 1
+                    elif char == end_char:
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                return json.loads(text[start:i+1])
+                            except:
+                                break
+        
+        return None
+    
+    async def cleanup_ocr_text(self, raw_text: str) -> LLMResponse:
+        """
+        Clean up and correct OCR text using LLM.
+        
+        Args:
+            raw_text: Raw OCR output
+            
+        Returns:
+            LLMResponse with cleaned text
+        """
+        system_prompt = """You are a text correction assistant. Your job is to fix OCR errors in exam papers.
+Fix obvious spelling mistakes, correct character misrecognitions (like 'l' vs '1', 'O' vs '0'), 
+and improve formatting. Keep the original meaning and structure intact.
+Return ONLY the corrected text, no explanations."""
+
+        prompt = f"""Please correct this OCR text from an exam paper:
+
+{raw_text}
+
+Return the corrected text:"""
+
+        return await self._call_ollama(prompt, system_prompt)
+    
+    async def structure_questions(self, text: str) -> LLMResponse:
+        """
+        Structure extracted text into questions format.
+        
+        Args:
+            text: Extracted text from question paper
+            
+        Returns:
+            LLMResponse with structured questions JSON
+        """
+        system_prompt = """You are an exam paper analyzer. Extract questions from the text and structure them.
+Return a JSON array of questions. Each question should have:
+- question_number: The question number (e.g., "1", "1a", "2")
+- question_text: The full question text
+- question_type: One of "short_answer", "essay", "mcq", "calculation"
+- subquestions: Array of subquestions (if any), each with question_number and question_text"""
+
+        prompt = f"""Analyze this exam paper text and extract all questions:
+
+{text}
+
+Return JSON array:
+[
+  {{
+    "question_number": "1",
+    "question_text": "...",
+    "question_type": "short_answer",
+    "subquestions": []
+  }}
+]"""
+
+        return await self._call_ollama(prompt, system_prompt)
+    
+    async def generate_marking_guide(
+        self,
+        question_text: str,
+        answer_scheme_text: str
+    ) -> LLMResponse:
+        """
+        Generate marking guide from question paper and answer scheme.
+        
+        Args:
+            question_text: Text from question paper
+            answer_scheme_text: Text from answer scheme
+            
+        Returns:
+            LLMResponse with marking guide JSON
+        """
+        system_prompt = """You are an exam marking guide generator. Create a structured marking guide 
+based on the question paper and answer scheme provided.
+Return a JSON array where each item represents a question with its marking criteria."""
+
+        prompt = f"""Create a marking guide from:
+
+QUESTION PAPER:
+{question_text}
+
+ANSWER SCHEME:
+{answer_scheme_text}
+
+Return JSON array:
+[
+  {{
+    "question_number": "1",
+    "question_text": "the question",
+    "question_type": "short_answer|essay|mcq|calculation",
+    "answer_scheme": "expected answer or marking criteria",
+    "max_marks": 5
+  }}
+]"""
+
+        return await self._call_ollama(prompt, system_prompt)
+    
+    async def grade_answer(
+        self,
+        question: str,
+        answer_scheme: str,
+        student_answer: str,
+        max_marks: float
+    ) -> LLMResponse:
+        """
+        Grade a student's answer using LLM.
+        
+        Args:
+            question: The question text
+            answer_scheme: Expected answer or marking criteria
+            student_answer: Student's answer
+            max_marks: Maximum marks for this question
+            
+        Returns:
+            LLMResponse with grading result JSON
+        """
+        system_prompt = """You are a fair and consistent exam grader. Grade the student's answer 
+based on the question and marking scheme. Award partial marks where appropriate.
+Be objective and provide constructive feedback."""
+
+        prompt = f"""Grade this exam answer:
+
+QUESTION:
+{question}
+
+MARKING SCHEME (Expected Answer):
+{answer_scheme}
+
+STUDENT'S ANSWER:
+{student_answer}
+
+MAXIMUM MARKS: {max_marks}
+
+Return JSON:
+{{
+  "score": <number between 0 and {max_marks}>,
+  "feedback": "brief explanation of the score and what could be improved"
+}}"""
+
+        return await self._call_ollama(prompt, system_prompt)
+    
+    async def batch_grade(
+        self,
+        questions: List[Dict[str, Any]],
+        student_answers: List[Dict[str, Any]]
+    ) -> List[LLMResponse]:
+        """
+        Grade multiple answers (calls grade_answer for each).
+        
+        Args:
+            questions: List of question dicts with question_text, answer_scheme, max_marks
+            student_answers: List of answer dicts with question_number, answer_text
+            
+        Returns:
+            List of LLMResponse objects
+        """
+        results = []
+        
+        # Create lookup for student answers
+        answers_by_num = {a["question_number"]: a["answer_text"] for a in student_answers}
+        
+        for q in questions:
+            q_num = q.get("question_number")
+            student_ans = answers_by_num.get(q_num, "")
+            
+            result = await self.grade_answer(
+                question=q.get("question_text", ""),
+                answer_scheme=q.get("answer_scheme", ""),
+                student_answer=student_ans,
+                max_marks=float(q.get("max_marks", 0))
+            )
+            results.append(result)
+        
+        return results
+    
+    async def check_health(self) -> bool:
+        """Check if Ollama is running and model is available."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{self.base_url}/api/tags")
+                if response.status_code == 200:
+                    models = response.json().get("models", [])
+                    model_names = [m.get("name", "") for m in models]
+                    return any(self.model in name for name in model_names)
+                return False
+        except:
+            return False
+
+
+# Singleton instance
+llm_service = LLMService()

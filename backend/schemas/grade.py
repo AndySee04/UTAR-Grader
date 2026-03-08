@@ -1,0 +1,62 @@
+from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Optional, List
+
+
+class GradeResponse(BaseModel):
+    id: str
+    student_answer_id: str
+    score: Optional[float]
+    max_marks: Optional[float]
+    feedback: Optional[str]
+    is_overridden: bool
+    original_score: Optional[float]
+    graded_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GradeUpdate(BaseModel):
+    score: float = Field(..., ge=0)
+    feedback: Optional[str] = None
+
+
+class StudentGradeDetail(BaseModel):
+    question_number: str
+    question_text: Optional[str]
+    student_answer: Optional[str]
+    score: Optional[float]
+    max_marks: Optional[float]
+    feedback: Optional[str]
+    is_overridden: bool
+
+
+class StudentGradeSummary(BaseModel):
+    document_id: str
+    student_name: Optional[str]
+    total_score: float
+    total_max_marks: float
+    percentage: float
+    grades: List[StudentGradeDetail]
+
+
+class ExamGradingSummary(BaseModel):
+    exam_id: str
+    exam_name: str
+    status: str
+    total_students: int
+    graded_students: int
+    average_percentage: Optional[float]
+    students: List[StudentGradeSummary]
+
+
+class StartGradingRequest(BaseModel):
+    process_all: bool = True  # If false, only grade ungraded
+
+
+class StartGradingResponse(BaseModel):
+    exam_id: str
+    status: str
+    message: str
+    students_to_grade: int
