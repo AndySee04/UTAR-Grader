@@ -248,6 +248,7 @@ function GradePaper() {
   useEffect(() => {
     const stateExamId = location.state?.examId
     const stateExamName = location.state?.examName
+    const isRegrade = location.state?.regrade
 
     if (!stateExamId) {
       setExamId(null)
@@ -291,11 +292,16 @@ function GradePaper() {
         setMarkingGuide(guide)
 
         // Decide which step to show when reopening:
-        // - If there is an existing marking guide, return user to "Review Marking Guide" (step 3).
-        // - Else if question + students exist, go to "Process" (step 2).
+        // - If there is an existing marking guide and this is a regrade, go to "Review Marking Guide".
+        // - If there is an existing marking guide (normal open), go to "Grade" results step.
+        // - Else if question + students exist, go to "Process".
         // - Otherwise stay on "Upload".
         if (Array.isArray(guide) && guide.length > 0) {
-          setStep(3)
+          if (isRegrade) {
+            setStep(2)
+          } else {
+            setStep(3)
+          }
         } else if (question && students.length > 0) {
           setStep(1)
         } else {
@@ -313,7 +319,7 @@ function GradePaper() {
       })
 
     return () => { cancelled = true }
-  }, [location.state?.examId])
+  }, [location.state?.examId, location.state?.regrade])
 
   // Keep local drafts for answer guides in sync when marking guide changes
   useEffect(() => {

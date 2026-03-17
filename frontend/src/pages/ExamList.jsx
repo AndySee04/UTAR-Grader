@@ -11,7 +11,13 @@ function ExamList() {
   const navigate = useNavigate()
 
   const openExam = (exam) => {
-    navigate('/grade', { state: { examId: exam.id, examName: exam.name } })
+    // For completed exams, clicking the row should open the results view.
+    // For all other statuses, open the grading workflow.
+    if (exam.status === 'completed') {
+      navigate(`/exams/${exam.id}/results`)
+    } else {
+      navigate('/grade', { state: { examId: exam.id, examName: exam.name } })
+    }
   }
 
   useEffect(() => {
@@ -183,6 +189,12 @@ function ExamList() {
                       >
                         Results
                       </Link>
+                      <button
+                        onClick={() => navigate('/grade', { state: { examId: exam.id, examName: exam.name, regrade: true } })}
+                        className="px-3 py-1.5 text-sm font-medium text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors"
+                      >
+                        Regrade
+                      </button>
                       <button
                         onClick={() => downloadExcel(exam.id, exam.name)}
                         className="px-3 py-1.5 text-sm font-medium text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors"
