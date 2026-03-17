@@ -87,8 +87,8 @@ export const processingAPI = {
     }),
   runOCR: (regionId) => api.post(`/regions/${regionId}/ocr`),
   deleteRegion: (regionId) => api.delete(`/regions/${regionId}`),
-  updateRegionText: (regionId, rawText) =>
-    api.patch(`/regions/${regionId}`, { raw_text: rawText }),
+  updateRegionText: (regionId, data) =>
+    api.patch(`/regions/${regionId}`, data),
   cleanupText: (regionId) => api.post(`/regions/${regionId}/cleanup`),
   checkOCRHealth: () => api.get("/health/ocr"),
   checkLLMHealth: () => api.get("/health/llm"),

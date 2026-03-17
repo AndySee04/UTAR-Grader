@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -6,6 +6,7 @@ import base64
 import io
 import sys
 import os
+import subprocess
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,7 +19,7 @@ from models.llm_response import LLMResponse
 from utils.auth import get_current_user
 from services.pdf_service import pdf_service
 from services.cv_service import cv_service
-from services.ocr_service import ocr_service
+from services.ocr_service import ocr_service, ocr_service_printed
 from services.llm_service import llm_service
 
 router = APIRouter()
@@ -163,17 +164,32 @@ async def run_ocr_on_region(
         
         # Crop region
         if bbox:
-            cropped = img.crop((
-                bbox.get("x", 0),
-                bbox.get("y", 0),
-                bbox.get("x", 0) + bbox.get("width", img.width),
-                bbox.get("y", 0) + bbox.get("height", img.height)
-            ))
+            # Safely read bounding box, and fall back to whole image if incomplete.
+            x = bbox.get("x", 0) or 0
+            y = bbox.get("y", 0) or 0
+            w = bbox.get("width")
+            h = bbox.get("height")
+
+            if w is None or h is None:
+                # If width/height are missing, treat as full page rather than
+                # extending beyond the image.
+                cropped = img
+            else:
+                left = max(0, int(x))
+                top = max(0, int(y))
+                right = min(img.width, left + int(w))
+                bottom = min(img.height, top + int(h))
+                if right <= left or bottom <= top:
+                    # Degenerate box -> fall back to full image
+                    cropped = img
+                else:
+                    cropped = img.crop((left, top, right, bottom))
         else:
             cropped = img
         
-        # Run OCR
-        text, line_details = ocr_service.extract_text_from_image(cropped)
+        # Run OCR - use printed-text model for question papers, handwriting model otherwise
+        ocr = ocr_service_printed if document.doc_type == "question_paper" else ocr_service
+        text, line_details = ocr.extract_text_from_image(cropped)
         
         # Update region
         region.raw_text = text
@@ -220,24 +236,33 @@ async def update_region_text(
     ).first()
     if not region:
         raise HTTPException(status_code=404, detail="Region not found")
+    # Allow updating OCR text and optional metadata like question_number / marks
     if "raw_text" in body:
         region.raw_text = body["raw_text"]
+    if "question_number" in body:
+        region.question_number = body["question_number"]
+    if "marks" in body:
+        try:
+            region.marks = float(body["marks"]) if body["marks"] is not None else None
+        except (TypeError, ValueError):
+            region.marks = None
     db.commit()
     db.refresh(region)
     return {
         "region_id": region_id,
         "raw_text": region.raw_text,
+        "question_number": region.question_number,
+        "marks": region.marks,
     }
 
 
 @router.post("/exams/{exam_id}/process")
 async def process_exam_documents(
     exam_id: str,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Process all documents for an exam (detect regions + OCR)."""
+    """Process all documents for an exam (detect regions + OCR). Starts a separate worker process and returns immediately."""
     exam = db.query(Exam).filter(
         Exam.id == exam_id,
         Exam.user_id == current_user.id
@@ -250,8 +275,16 @@ async def process_exam_documents(
     exam.status = "processing"
     db.commit()
     
-    # Process in background
-    background_tasks.add_task(process_exam_background, exam_id, db)
+    # Spawn worker in a separate process (do not pass db; worker creates its own session)
+    backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Inherit stdout/stderr so worker progress is visible in the same terminal as the API
+    subprocess.Popen(
+        [sys.executable, "-m", "scripts.process_exam_worker", exam_id],
+        cwd=backend_root,
+        env=os.environ.copy(),
+        stdout=None,
+        stderr=None,
+    )
     
     return {"message": "Processing started", "exam_id": exam_id, "status": "processing"}
 
@@ -264,6 +297,11 @@ def process_exam_background(exam_id: str, db: Session):
         total_docs = len(to_process)
         print(f"[Processing] Started exam {exam_id}: {total_docs} document(s) to process (question paper + answer scheme)", flush=True)
         for idx, doc in enumerate(to_process, 1):
+            if doc.doc_type == "question_paper":
+                existing = db.query(ExtractedText).filter(ExtractedText.document_id == doc.id).count()
+                if existing > 0:
+                    print(f"[Processing] Question paper already has regions, skipping.", flush=True)
+                    continue
             print(f"[Processing] ({idx}/{total_docs}) {doc.doc_type}", flush=True)
             page_count = doc.page_count or 0
             for pg in range(1, page_count + 1):
@@ -274,7 +312,9 @@ def process_exam_background(exam_id: str, db: Session):
                     print(f"[Processing]   Page {pg}/{page_count} — detected {len(regions)} region(s), running OCR...", flush=True)
                     for ri, region in enumerate(regions):
                         cropped = cv_service.crop_region(img, region)
-                        text, _ = ocr_service.extract_text_from_image(cropped)
+                        # Use printed-text model for question paper pages, handwriting model for others
+                        ocr = ocr_service_printed if doc.doc_type == "question_paper" else ocr_service
+                        text, _ = ocr.extract_text_from_image(cropped)
                         extracted = ExtractedText(
                             document_id=doc.id,
                             page_number=pg,

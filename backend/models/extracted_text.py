@@ -18,6 +18,7 @@ class ExtractedText(Base):
     display_order = Column(Integer, nullable=True)  # user-defined order (Q1, Q2, ...)
     raw_text = Column(Text, nullable=True)
     processed_text = Column(Text, nullable=True)
+    marks = Column(Float, nullable=True)
     confidence = Column(Float, nullable=True)
     extracted_at = Column(DateTime, default=datetime.utcnow)
 

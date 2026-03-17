@@ -58,6 +58,7 @@ class CropRegionResponse(BaseModel):
     question_number: Optional[str]
     raw_text: Optional[str]
     processed_text: Optional[str]
+    marks: Optional[float] = None
 
     class Config:
         from_attributes = True

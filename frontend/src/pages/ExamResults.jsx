@@ -21,8 +21,10 @@ function ExamResults() {
     try {
       const res = await gradingAPI.getGrades(examId)
       setResults(res.data)
+      return res.data
     } catch (err) {
       setError('Failed to load results')
+      return null
     } finally {
       setLoading(false)
     }
@@ -40,11 +42,11 @@ function ExamResults() {
       toast.success('Score updated')
       setEditingGrade(null)
       setEditScore('')
-      // Reload to get updated totals
-      await loadResults()
+      // Reload to get updated totals and get fresh data
+      const data = await loadResults()
       // Re-select the student to refresh their grades
-      if (selectedStudent) {
-        const updated = results?.students?.find(s => s.document_id === selectedStudent.document_id)
+      if (selectedStudent && data?.students) {
+        const updated = data.students.find(s => s.document_id === selectedStudent.document_id)
         if (updated) setSelectedStudent(updated)
       }
     } catch (err) {
@@ -202,7 +204,7 @@ function ExamResults() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md">
-                          Q{grade.question_number}
+                          {grade.question_number}
                         </span>
                         {grade.is_overridden && (
                           <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md flex items-center gap-1">
@@ -270,13 +272,29 @@ function ExamResults() {
                     </div>
 
                     {grade.question_text && (
-                      <p className="text-sm text-gray-600 mb-2">{grade.question_text}</p>
+                      <p className="text-sm text-gray-600 mb-1 font-medium">
+                        {grade.question_text}
+                      </p>
                     )}
 
-                    {grade.feedback && (
-                      <div className="bg-gray-50/80 rounded-lg p-3 text-sm text-gray-600 border border-gray-100">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">AI Feedback</p>
-                        {grade.feedback}
+                    {grade.answer_scheme && (
+                      <p className="text-xs text-gray-500 mb-1">
+                        <span className="font-semibold uppercase tracking-wide">Answer guide:</span>
+                        <br />
+                        <span className="whitespace-pre-wrap">
+                          {(grade.answer_scheme || '').trimStart()}
+                        </span>
+                      </p>
+                    )}
+
+                    {grade.student_answer && (
+                      <div className="mb-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 mb-0.5">
+                          Student answer
+                        </p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {grade.student_answer}
+                        </p>
                       </div>
                     )}
                   </div>

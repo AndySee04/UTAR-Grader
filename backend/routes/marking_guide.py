@@ -53,12 +53,12 @@ async def generate_marking_guide(
         Document.doc_type == "answer_scheme"
     ).first()
     
-    # Gather extracted text
+    # Gather extracted text (order by page then display_order so order matches document)
     question_text = ""
     if question_doc:
         texts = db.query(ExtractedText).filter(
             ExtractedText.document_id == question_doc.id
-        ).order_by(ExtractedText.page_number).all()
+        ).order_by(ExtractedText.page_number, ExtractedText.display_order).all()
         question_text = "\n".join([
             t.processed_text or t.raw_text or ""
             for t in texts
@@ -68,7 +68,7 @@ async def generate_marking_guide(
     if scheme_doc:
         texts = db.query(ExtractedText).filter(
             ExtractedText.document_id == scheme_doc.id
-        ).order_by(ExtractedText.page_number).all()
+        ).order_by(ExtractedText.page_number, ExtractedText.display_order).all()
         scheme_text = "\n".join([
             t.processed_text or t.raw_text or ""
             for t in texts
@@ -100,8 +100,22 @@ async def generate_marking_guide(
             )
             db.add(llm_response)
             
-            # Parse and save marking guide
-            questions = result.parsed_response if isinstance(result.parsed_response, list) else []
+            # Parse and save marking guide (LLM may return array or object with list inside)
+            raw = result.parsed_response
+            if isinstance(raw, list):
+                questions = raw
+            elif isinstance(raw, dict):
+                questions = (
+                    raw.get("questions")
+                    or raw.get("marking_guide")
+                    or raw.get("items")
+                    or raw.get("guide")
+                    or []
+                )
+                if not isinstance(questions, list):
+                    questions = []
+            else:
+                questions = []
             
             for q in questions:
                 guide = MarkingGuide(

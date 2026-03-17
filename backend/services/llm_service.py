@@ -230,11 +230,13 @@ Return JSON array:
         Returns:
             LLMResponse with grading result JSON
         """
-        system_prompt = """You are a fair and consistent exam grader. Grade the student's answer 
-based on the question and marking scheme. Award partial marks where appropriate.
-Be objective and provide constructive feedback."""
+        system_prompt = """You are a strict but fair exam grader.
+Your only job is to assign a numerical score; do not provide explanations or feedback.
+Ignore minor grammar, spelling, or missing symbols/punctuation as long as the overall meaning and key points are correct.
+The score must not be in decimal increments, only whole numbers are allowed.
+The order of answer guide is not important, you can grade the answer in any order you want."""
 
-        prompt = f"""Grade this exam answer:
+        prompt = f"""Grade this exam answer numerically only.
 
 QUESTION:
 {question}
@@ -247,10 +249,9 @@ STUDENT'S ANSWER:
 
 MAXIMUM MARKS: {max_marks}
 
-Return JSON:
+Return JSON (no extra text):
 {{
-  "score": <number between 0 and {max_marks}>,
-  "feedback": "brief explanation of the score and what could be improved"
+  "score": <number between 0 and {max_marks}>
 }}"""
 
         return await self._call_ollama(prompt, system_prompt)

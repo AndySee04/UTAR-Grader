@@ -326,7 +326,8 @@ async def save_crop_region(
         region_type=extracted_text.region_type,
         question_number=extracted_text.question_number,
         raw_text=extracted_text.raw_text,
-        processed_text=extracted_text.processed_text
+        processed_text=extracted_text.processed_text,
+        marks=extracted_text.marks,
     )
 
 
@@ -366,7 +367,8 @@ async def get_crop_regions(
             region_type=r.region_type,
             question_number=r.question_number,
             raw_text=r.raw_text,
-            processed_text=r.processed_text
+            processed_text=r.processed_text,
+            marks=r.marks,
         )
         for r in regions
     ]

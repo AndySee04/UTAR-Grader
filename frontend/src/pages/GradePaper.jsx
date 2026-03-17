@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { examsAPI, documentsAPI, processingAPI, markingGuideAPI, gradingAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
@@ -23,11 +23,14 @@ function GradePaper() {
   const [error, setError] = useState('')
   const [processing, setProcessing] = useState(false)
   const [processStatus, setProcessStatus] = useState('')
+  const [examStatus, setExamStatus] = useState(null) 
   const [dragActive, setDragActive] = useState(null)
   
   // OCR Region View State
   const [selectedDocId, setSelectedDocId] = useState(null)
+  const [selectedDocType, setSelectedDocType] = useState(null) // 'question' | 'student_answer'
   const [regions, setRegions] = useState([])
+  const [questionTemplateRegions, setQuestionTemplateRegions] = useState([])
   const [loadingRegions, setLoadingRegions] = useState(false)
   const [runningOcrFor, setRunningOcrFor] = useState(null)
   const [showRegionModal, setShowRegionModal] = useState(false)
@@ -47,13 +50,24 @@ function GradePaper() {
   const [loadingPageImages, setLoadingPageImages] = useState(false)
   const [processingNewCrop, setProcessingNewCrop] = useState(false)
   const editFocusRef = useRef({ id: null, value: null })
+  const addStudentInputRef = useRef(null)
 
   // Region count per document (synced with backend); cropped = count > 0
   const [regionCountByDocId, setRegionCountByDocId] = useState({})
+  const [answerGuideDrafts, setAnswerGuideDrafts] = useState({})
+  const [savingAnswerGuideId, setSavingAnswerGuideId] = useState(null)
 
   const croppedDocs = useMemo(
     () => new Set(Object.entries(regionCountByDocId).filter(([, c]) => c > 0).map(([id]) => id)),
     [regionCountByDocId]
+  )
+
+  const croppedStudentCount = useMemo(
+    () =>
+      (uploadedDocs.students || []).filter(
+        (doc) => (regionCountByDocId[doc.id] ?? 0) > 0
+      ).length,
+    [uploadedDocs.students, regionCountByDocId]
   )
 
   const allStudentsCropped =
@@ -62,6 +76,169 @@ function GradePaper() {
     uploadedDocs.students.every((doc) => (regionCountByDocId[doc.id] ?? 0) > 0)
 
   const studentDocs = uploadedDocs.students || []
+
+  // Helpers for question-number colouring and marks extraction (question paper only)
+  const QUESTION_COLOR_PALETTE = [
+    {
+      border: 'border-emerald-500/90',
+      fillBorder: 'border-emerald-500/90',
+      fillBg: 'bg-emerald-400/25',
+      badge: 'bg-emerald-100 text-emerald-800'
+    },
+    {
+      border: 'border-indigo-500/90',
+      fillBorder: 'border-indigo-500/90',
+      fillBg: 'bg-indigo-400/20',
+      badge: 'bg-indigo-100 text-indigo-800'
+    },
+    {
+      border: 'border-amber-500/90',
+      fillBorder: 'border-amber-500/90',
+      fillBg: 'bg-amber-400/25',
+      badge: 'bg-amber-100 text-amber-800'
+    },
+    {
+      border: 'border-rose-500/90',
+      fillBorder: 'border-rose-500/90',
+      fillBg: 'bg-rose-400/20',
+      badge: 'bg-rose-100 text-rose-800'
+    }
+  ]
+
+  const MAIN_QUESTION_OPTIONS = Array.from({ length: 6 }, (_, i) => i + 1) // Q1..Q6
+  const PART_OPTIONS = ['-', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j']
+  const SUBPART_OPTIONS = [
+    '-',
+    'i',
+    'ii',
+    'iii',
+    'iv',
+    'v',
+    'vi',
+    'vii',
+    'viii',
+    'ix',
+    'x',
+    'xi',
+    'xii',
+    'xiii'
+  ]
+
+  const parseQuestionComponents = (label) => {
+    if (!label) return { main: null, part: null, sub: null }
+    const trimmed = label.trim()
+    const mainMatch = trimmed.match(/^\s*[Qq]?(\d+)/)
+    const main = mainMatch ? parseInt(mainMatch[1], 10) : null
+
+    let part = null
+    let sub = null
+
+    // Look for patterns like "Q1 a i.)" or "Q1(a)(i)"
+    const tokens = trimmed.split(/[\s().]+/).filter(Boolean)
+    // tokens[0] is usually Q1 / 1
+    if (tokens.length > 1) {
+      const candidate = tokens[1].toLowerCase()
+      if (/^[a-z]$/.test(candidate)) {
+        part = candidate
+      }
+    }
+    if (tokens.length > 2) {
+      const candidate = tokens[2].toLowerCase()
+      if (/^(i|ii|iii|iv|v)$/.test(candidate)) {
+        sub = candidate
+      }
+    }
+    return { main, part, sub }
+  }
+
+  const formatQuestionLabel = (main, part, sub) => {
+    if (!main) return ''
+    const pieces = [`Q${main}`]
+    if (part && part !== '-') pieces.push(part)
+    if (sub && sub !== '-') pieces.push(sub)
+    return pieces.join(' ')
+  }
+
+  const computeNextQuestionTriple = (regionsList) => {
+    // Determine next (main, part, sub) based on the last region in the ordered list
+    if (!regionsList || regionsList.length === 0) {
+      return { main: 1, part: 'a', sub: 'i' }
+    }
+    const last = regionsList[regionsList.length - 1]
+    const lastLabel = last.question_number || ''
+    const { main, part, sub } = parseQuestionComponents(lastLabel)
+    const currentMain = main || 1
+    const currentPart = part || 'a'
+
+    // Helper to move to next valid element in an options array
+    const nextIn = (arr, value) => {
+      const idx = arr.indexOf(value)
+      if (idx === -1) return value
+      return arr[Math.min(idx + 1, arr.length - 1)]
+    }
+
+    // 1) If we already have a subpart (e.g. Q1 a i), advance sub within same main/part
+    if (sub && sub !== '-' && sub !== SUBPART_OPTIONS[SUBPART_OPTIONS.length - 1]) {
+      const nextSub = nextIn(SUBPART_OPTIONS, sub)
+      return { main: currentMain, part: currentPart, sub: nextSub }
+    }
+
+    // 2) If we have a part but no sub (e.g. Q1 a -), advance part and keep sub empty ("-")
+    if (sub == null || sub === '-') {
+      if (currentPart && currentPart !== '-') {
+        const nextPart = nextIn(PART_OPTIONS, currentPart)
+        if (nextPart !== currentPart) {
+          return { main: currentMain, part: nextPart, sub: '-' }
+        }
+      }
+    }
+
+    // 3) Otherwise bump main question, reset to a i (bounded by max)
+    const nextMain = nextIn(MAIN_QUESTION_OPTIONS, currentMain)
+    return { main: nextMain, part: 'a', sub: 'i' }
+  }
+
+  const parseMarksFromText = (text) => {
+    if (!text) return null
+    const match = text.match(/(\d+)\s*marks?/i)
+    if (!match) return null
+    const value = parseInt(match[1], 10)
+    return Number.isNaN(value) ? null : value
+  }
+
+  const extractMarksAndClean = (text) => {
+    if (!text) return { marks: null, cleanedText: text }
+    // Capture patterns like "5 marks", "(5 marks)", "((( 5 marks )))", with any number of surrounding parentheses/spaces
+    const match = text.match(/[()\s]*([0-9]+)\s*marks?[()\s]*/i)
+    if (!match) return { marks: null, cleanedText: text }
+    const marks = parseInt(match[1], 10)
+    if (Number.isNaN(marks)) return { marks: null, cleanedText: text }
+    // Remove the first occurrence of the matched "x mark(s)" (with any surrounding parentheses/spaces) from the text
+    const cleanedText = text.replace(match[0], '').replace(/\s{2,}/g, ' ').trim()
+    return { marks, cleanedText }
+  }
+
+  const regionColorMap = useMemo(() => {
+    if (!regions?.length) return {}
+    const rootToColor = {}
+    const byId = {}
+    regions.forEach((r, idx) => {
+      const fallbackLabel = `Q${idx + 1}`
+      const label = (r.question_number || fallbackLabel).trim()
+      const m = label.match(/^\s*([Qq]?\d+)/)
+      const root = (m ? m[1] : fallbackLabel).toUpperCase()
+      if (!rootToColor[root]) {
+        const paletteIndex = Object.keys(rootToColor).length % QUESTION_COLOR_PALETTE.length
+        rootToColor[root] = QUESTION_COLOR_PALETTE[paletteIndex]
+      }
+      byId[r.id] = {
+        ...rootToColor[root],
+        label,
+        root
+      }
+    })
+    return byId
+  }, [regions])
 
   const toast = useToast()
   const navigate = useNavigate()
@@ -75,6 +252,7 @@ function GradePaper() {
     if (!stateExamId) {
       setExamId(null)
       setExamName('')
+      setExamStatus(null)
       setStep(0)
       setUploadedDocs({ question: null, scheme: null, students: [] })
       setMarkingGuide([])
@@ -103,15 +281,22 @@ function GradePaper() {
         if (cancelled) return
         const exam = examRes.data
         if (exam?.name) setExamName(exam.name)
+        if (exam?.status) setExamStatus(exam.status)
         const question = Array.isArray(qList.data) ? qList.data[0] : null
         const scheme = Array.isArray(sList.data) ? sList.data[0] : null
         const students = Array.isArray(stList.data) ? stList.data : []
-        setUploadedDocs({ question, scheme, students })
-        setMarkingGuide(guideRes?.data ?? [])
+        const guide = guideRes?.data ?? []
 
-        if ((guideRes?.data?.length ?? 0) > 0) {
+        setUploadedDocs({ question, scheme, students })
+        setMarkingGuide(guide)
+
+        // Decide which step to show when reopening:
+        // - If there is an existing marking guide, return user to "Review Marking Guide" (step 3).
+        // - Else if question + students exist, go to "Process" (step 2).
+        // - Otherwise stay on "Upload".
+        if (Array.isArray(guide) && guide.length > 0) {
           setStep(3)
-        } else if (question && scheme && students.length > 0) {
+        } else if (question && students.length > 0) {
           setStep(1)
         } else {
           setStep(0)
@@ -130,14 +315,34 @@ function GradePaper() {
     return () => { cancelled = true }
   }, [location.state?.examId])
 
-  // Sync region counts from backend when we have student documents (step 1)
+  // Keep local drafts for answer guides in sync when marking guide changes
   useEffect(() => {
-    if (!examId || !studentDocs.length) return
+    if (!Array.isArray(markingGuide) || markingGuide.length === 0) {
+      setAnswerGuideDrafts({})
+      return
+    }
+    setAnswerGuideDrafts((prev) => {
+      const next = { ...prev }
+      markingGuide.forEach((q) => {
+        if (next[q.id] == null) {
+          next[q.id] = q.answer_scheme || ''
+        }
+      })
+      return next
+    })
+  }, [markingGuide])
+
+  // Sync region counts from backend (question paper + student docs) for step 1
+  useEffect(() => {
+    if (!examId) return
+    const questionDoc = uploadedDocs.question
+    const docsToSync = [...(questionDoc ? [questionDoc] : []), ...studentDocs]
+    if (!docsToSync.length) return
     let cancelled = false
     const fetchCounts = async () => {
       const counts = {}
       await Promise.all(
-        studentDocs.map(async (doc) => {
+        docsToSync.map(async (doc) => {
           try {
             const res = await documentsAPI.getRegions(doc.id)
             const list = res.data || []
@@ -151,7 +356,7 @@ function GradePaper() {
     }
     fetchCounts()
     return () => { cancelled = true }
-  }, [examId, studentDocs.length])
+  }, [examId, studentDocs.length, uploadedDocs.question?.id])
 
   // Load all page images when modal opens (seamless scroll)
   useEffect(() => {
@@ -240,13 +445,25 @@ function GradePaper() {
         setCropEnd(null)
         return
       }
+      // If cropping student answers, stop when we've reached the same count as question-paper regions
+      if (
+        selectedDocType === 'student_answer' &&
+        questionTemplateRegions.length > 0 &&
+        regions.length >= questionTemplateRegions.length
+      ) {
+        toast.error('You have already cropped all questions for this student answer.')
+        setCropStart(null)
+        setCropEnd(null)
+        return
+      }
+
       const payload = {
         page_number: activePage,
         x: Math.round(x1),
         y: Math.round(y1),
         width: w,
         height: h,
-        region_type: 'student_answer'
+        region_type: selectedDocType || 'student_answer'
       }
       setCropStart(null)
       setCropEnd(null)
@@ -260,7 +477,33 @@ function GradePaper() {
           }))
         })
         .then(({ region, raw_text }) => {
-          setRegions(prev => [...prev, { ...region, raw_text }])
+          const { marks, cleanedText } = extractMarksAndClean(raw_text || '')
+          const finalText = cleanedText ?? raw_text
+          setRegions(prev => {
+            let question_number = region.question_number
+            if (selectedDocType === 'question') {
+              // Auto-assign sequential question numbers for question paper
+              const { main, part, sub } = computeNextQuestionTriple(prev)
+              question_number = formatQuestionLabel(main, part, sub)
+            } else if (selectedDocType === 'student_answer' && questionTemplateRegions.length > 0) {
+              // For student answers, follow the question order from the question paper template
+              const template = questionTemplateRegions[Math.min(prev.length, questionTemplateRegions.length - 1)]
+              if (template?.question_number) {
+                question_number = template.question_number
+              }
+            }
+            const nextRegion = {
+              ...region,
+              question_number,
+              raw_text: finalText,
+              marks
+            }
+            // Persist cleaned text, marks and question_number (if any)
+            const payloadUpdate = { raw_text: finalText, marks }
+            if (question_number) payloadUpdate.question_number = question_number
+            processingAPI.updateRegionText(region.id, payloadUpdate).catch(() => {})
+            return [...prev, nextRegion]
+          })
           markDocCropped(selectedDocId)
           toast.success('Answer region cropped and processed')
         })
@@ -276,7 +519,7 @@ function GradePaper() {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
-  }, [isCropping, selectedDocId, activePage])
+  }, [isCropping, selectedDocId, activePage, selectedDocType, regions.length, questionTemplateRegions.length])
 
   // Drag handlers
   const handleDrag = useCallback((e, zone) => {
@@ -313,8 +556,9 @@ function GradePaper() {
       setError('Please enter an exam name')
       return
     }
-    if (!questionPaper || !answerScheme || studentAnswers.length === 0) {
-      setError('Please upload all required documents')
+    // Answer scheme is optional – only require question paper and at least one student answer
+    if (!questionPaper || studentAnswers.length === 0) {
+      setError('Please upload a question paper and at least one student answer sheet')
       return
     }
 
@@ -327,12 +571,15 @@ function GradePaper() {
       setExamId(newExamId)
 
       const qRes = await documentsAPI.upload(newExamId, questionPaper, 'question_paper')
-      const sRes = await documentsAPI.upload(newExamId, answerScheme, 'answer_scheme')
+      let sRes = null
+      if (answerScheme) {
+        sRes = await documentsAPI.upload(newExamId, answerScheme, 'answer_scheme')
+      }
       const stRes = await documentsAPI.uploadMultiple(newExamId, studentAnswers, 'student_answer')
 
       setUploadedDocs({
         question: qRes.data,
-        scheme: sRes.data,
+        scheme: sRes ? sRes.data : null,
         students: stRes.data
       })
 
@@ -345,40 +592,115 @@ function GradePaper() {
     }
   }
 
-  // Step 2: Process
+  // Step 2: Process (non-blocking: start in background, optional poll to advance when done)
   const handleProcess = async () => {
-    setProcessing(true)
     setError('')
-    setProcessStatus('Initializing OCR engine...')
-
+    setProcessing(true)
+    setProcessStatus('Building marking guide from cropped question paper...')
     try {
-      await processingAPI.processExam(examId)
-
-      // Poll progress
-      const stages = [
-        'Detecting text regions...',
-        'Running OCR on detected regions...',
-        'Cleaning up extracted text...',
-        'Finalizing document processing...'
-      ]
-      for (let i = 0; i < stages.length; i++) {
-        setProcessStatus(stages[i])
-        await new Promise(resolve => setTimeout(resolve, 2000))
+      if (!examId || !uploadedDocs.question?.id) {
+        throw new Error('Question paper is missing for this exam')
       }
 
-      toast.success('Documents processed successfully!')
+      // Load existing marking guide and clear it (we'll regenerate from cropped question regions)
+      let existingGuide = []
+      try {
+        const existingRes = await markingGuideAPI.get(examId)
+        existingGuide = Array.isArray(existingRes.data) ? existingRes.data : []
+      } catch {
+        existingGuide = []
+      }
+
+      if (existingGuide.length > 0) {
+        await Promise.all(
+          existingGuide.map((q) =>
+            markingGuideAPI.deleteQuestion(q.id).catch(() => {})
+          )
+        )
+      }
+
+      // Load cropped regions from the question paper and turn them into marking guide questions
+      const regionsRes = await documentsAPI.getRegions(uploadedDocs.question.id)
+      const regionList = Array.isArray(regionsRes.data) ? regionsRes.data : []
+
+      const newGuide = []
+      for (const r of regionList) {
+        const originalQNum = (r.question_number || '').trim()
+        const question_number = originalQNum || String(newGuide.length + 1)
+        const question_text = (r.raw_text || r.processed_text || '').trim()
+        const rawMarks = r.marks
+        const max_marks = rawMarks ?? 0
+
+        // Skip regions that have no meaningful content:
+        // - no OCR text
+        // - no explicit question number set on the region
+        // - and no non-zero marks
+        const hasText = !!question_text
+        const hasExplicitQNum = !!originalQNum
+        const hasMarks = rawMarks != null && Number(rawMarks) !== 0
+        if (!hasText && !hasExplicitQNum && !hasMarks) continue
+
+        const payload = {
+          question_number,
+          question_text,
+          question_type: 'short_answer',
+          max_marks
+        }
+
+        try {
+          const created = await markingGuideAPI.addQuestion(examId, payload)
+          newGuide.push(created.data)
+        } catch {
+          // Ignore individual failures, continue with others
+        }
+      }
+
+      setMarkingGuide(newGuide)
+      setExamStatus('draft')
+      toast.success('Marking guide template created from cropped question paper')
+      // Move directly to the Marking Guide step where the user can review/edit.
       setStep(2)
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Processing failed')
-    } finally {
-      setProcessing(false)
       setProcessStatus('')
+      setProcessing(false)
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Processing failed')
+      setProcessStatus('')
+      setProcessing(false)
     }
   }
 
+  const processingPollRef = useRef(null)
+  const startProcessingPoll = () => {
+    if (processingPollRef.current) return
+    processingPollRef.current = setInterval(async () => {
+      if (!examId) return
+      try {
+        const res = await examsAPI.get(examId)
+        if (res.data?.status === 'draft') {
+          setExamStatus('draft')
+          stopProcessingPoll()
+          toast.success('Processing complete')
+          setStep(2)
+        }
+      } catch {
+        // ignore
+      }
+    }, 3000)
+  }
+  const stopProcessingPoll = () => {
+    if (processingPollRef.current) {
+      clearInterval(processingPollRef.current)
+      processingPollRef.current = null
+    }
+  }
+  useEffect(() => {
+    return () => stopProcessingPoll()
+  }, [examId])
+
   // --- Regions View ---
-  const handleViewRegions = async (docId) => {
+  const handleViewRegions = async (docId, docType = 'student_answer') => {
     setSelectedDocId(docId)
+    setSelectedDocType(docType)
     setLoadingRegions(true)
     setShowRegionModal(true)
     setError('')
@@ -394,12 +716,37 @@ function GradePaper() {
       try {
         const regionsRes = await documentsAPI.getRegions(docId)
         const list = regionsRes.data || []
-        setRegions(list)
+        setRegions(
+          list.map((r) => ({
+            ...r,
+            // Prefer marks already saved in DB; only fall back to parsing if absent
+            marks:
+              r.marks != null
+                ? r.marks
+                : parseMarksFromText(r.raw_text || r.processed_text)
+          }))
+        )
+
+        // If viewing the question paper, remember its regions as the template order
+        if (docType === 'question') {
+          setQuestionTemplateRegions(list)
+        }
       } catch (err) {
         if (err?.response?.status === 404) {
           setRegions([])
         } else {
           throw err
+        }
+      }
+
+      // When cropping student answers, ensure we have the question-paper template loaded
+      if (docType === 'student_answer' && uploadedDocs.question?.id && questionTemplateRegions.length === 0) {
+        try {
+          const qRegionsRes = await documentsAPI.getRegions(uploadedDocs.question.id)
+          const qList = qRegionsRes.data || []
+          setQuestionTemplateRegions(qList)
+        } catch {
+          // ignore; student regions can still be edited manually if needed
         }
       }
     } catch (err) {
@@ -419,11 +766,19 @@ function GradePaper() {
     setRunningOcrFor(regionId)
     try {
       const res = await processingAPI.runOCR(regionId)
-      setRegions(prev => prev.map(r =>
-        r.id === regionId
-          ? { ...r, raw_text: res.data?.raw_text ?? res.data?.text ?? r.raw_text }
-          : r
-      ))
+      setRegions(prev => prev.map(r => {
+        if (r.id !== regionId) return r
+        const newText = res.data?.raw_text ?? res.data?.text ?? r.raw_text
+        const { marks, cleanedText } = extractMarksAndClean(newText || '')
+        const finalText = cleanedText ?? newText
+        // Persist cleaned text and marks as well
+        processingAPI.updateRegionText(regionId, { raw_text: finalText, marks }).catch(() => {})
+        return {
+          ...r,
+          raw_text: finalText,
+          marks
+        }
+      }))
       toast.success('OCR ran successfully')
     } catch (err) {
       toast.error('Failed to run OCR for this region')
@@ -451,7 +806,7 @@ function GradePaper() {
 
   const handleUpdateRegionText = async (regionId, rawText) => {
     try {
-      await processingAPI.updateRegionText(regionId, rawText)
+      await processingAPI.updateRegionText(regionId, { raw_text: rawText })
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Failed to save edit')
     }
@@ -463,7 +818,13 @@ function GradePaper() {
       await documentsAPI.saveRegionsOrder(docId, regionsList.map((r) => r.id))
       await Promise.all(
         regionsList.map((r) =>
-          processingAPI.updateRegionText(r.id, r.raw_text ?? '').catch(() => {})
+          processingAPI
+            .updateRegionText(r.id, {
+              raw_text: r.raw_text ?? '',
+              marks: r.marks ?? null,
+              question_number: r.question_number ?? null
+            })
+            .catch(() => {})
         )
       )
     } catch (err) {
@@ -485,6 +846,7 @@ function GradePaper() {
   const handleGenerateGuide = async () => {
     setLoading(true)
     setError('')
+    toast.info('Generating marking guide... This may take a minute.')
 
     try {
       const res = await markingGuideAPI.generate(examId)
@@ -493,6 +855,7 @@ function GradePaper() {
       setStep(3)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to generate marking guide')
+      toast.error('Failed to generate marking guide')
     } finally {
       setLoading(false)
     }
@@ -519,7 +882,7 @@ function GradePaper() {
         question_text: '',
         question_type: 'short_answer',
         max_marks: 1,
-        expected_answer: ''
+        answer_scheme: ''
       })
       setMarkingGuide([...markingGuide, res.data])
       toast.info('Question added')
@@ -668,7 +1031,7 @@ function GradePaper() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <FileDropZone
               id="question-paper"
               label="Question Paper"
@@ -677,15 +1040,6 @@ function GradePaper() {
               onFileChange={(e) => setQuestionPaper(e.target.files[0])}
               onDrop={(e) => handleDrop(e, setQuestionPaper)}
               zone="question"
-            />
-            <FileDropZone
-              id="answer-scheme"
-              label="Answer Scheme"
-              subtitle="Drop PDF or click to browse"
-              file={answerScheme}
-              onFileChange={(e) => setAnswerScheme(e.target.files[0])}
-              onDrop={(e) => handleDrop(e, setAnswerScheme)}
-              zone="scheme"
             />
           </div>
 
@@ -752,21 +1106,14 @@ function GradePaper() {
         <div className="card p-6 space-y-6 animate-fade-in">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Process Documents</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              First, manually crop each student answer region. Then the system will detect text regions on the question paper and answer scheme and extract text using OCR.
-            </p>
+
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
               <p className="text-xs font-medium text-indigo-500 uppercase tracking-wide">Question Paper</p>
               <p className="text-2xl font-bold text-indigo-700 mt-1">{uploadedDocs.question?.page_count || 0}</p>
               <p className="text-xs text-indigo-400">pages</p>
-            </div>
-            <div className="bg-purple-50/50 rounded-xl p-4 border border-purple-100">
-              <p className="text-xs font-medium text-purple-500 uppercase tracking-wide">Answer Scheme</p>
-              <p className="text-2xl font-bold text-purple-700 mt-1">{uploadedDocs.scheme?.page_count || 0}</p>
-              <p className="text-xs text-purple-400">pages</p>
             </div>
             <div className="bg-emerald-50/50 rounded-xl p-4 border border-emerald-100">
               <p className="text-xs font-medium text-emerald-500 uppercase tracking-wide">Student Answers</p>
@@ -787,15 +1134,79 @@ function GradePaper() {
             </div>
           )}
 
+          {!processing && uploadedDocs.question && (
+            <div className="mt-6 border-t border-gray-100 pt-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">Crop Question Paper</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                <button
+                  onClick={() => handleViewRegions(uploadedDocs.question.id, 'question')}
+                  className="text-left p-3 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <svg className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-gray-700 truncate">Question paper</span>
+                      <span className={`text-[11px] font-medium ${(regionCountByDocId[uploadedDocs.question.id] ?? 0) > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {(regionCountByDocId[uploadedDocs.question.id] ?? 0) > 0
+                          ? `${regionCountByDocId[uploadedDocs.question.id]} region(s) cropped ✅`
+                          : 'Not cropped yet'}
+                      </span>
+                    </div>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-300 group-hover:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
           {!processing && studentDocs.length > 0 && (
             <div className="mt-6 border-t border-gray-100 pt-6">
-              <h3 className="text-sm font-semibold text-gray-900 mb-1">Crop Student Answer Regions</h3>
-              <p className="text-xs text-gray-500 mb-2">
-                The website will guide you through each student answer. Click a student to open their pages, then drag boxes over each answer region. Do this for every student before starting processing.
-              </p>
-              <p className="text-xs font-medium text-gray-600 mb-4">
-                Progress: {Array.from(croppedDocs).length} / {studentDocs.length} students cropped
-              </p>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Crop Student Answer</h3>
+                  <p className="text-xs font-medium text-gray-600">
+                    Progress: {croppedStudentCount} / {studentDocs.length} students cropped
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={addStudentInputRef}
+                    type="file"
+                    accept=".pdf"
+                    multiple
+                    className="hidden"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || [])
+                      e.target.value = ''
+                      if (!examId || files.length === 0) return
+                      try {
+                        setLoading(true)
+                        const res = await documentsAPI.uploadMultiple(examId, files, 'student_answer')
+                        setUploadedDocs((prev) => ({
+                          ...prev,
+                          students: [...(prev.students || []), ...(res.data || [])]
+                        }))
+                        toast.success('Student answer sheets added')
+                      } catch (err) {
+                        toast.error(err?.response?.data?.detail || 'Failed to add student answers')
+                      } finally {
+                        setLoading(false)
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addStudentInputRef.current?.click()}
+                    className="btn-secondary px-3 py-1.5 text-xs"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {studentDocs
                   .slice()
@@ -809,9 +1220,9 @@ function GradePaper() {
                     <button
                       key={doc.id}
                       onClick={() => handleViewRegions(doc.id)}
-                      className="text-left p-3 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group flex items-center justify-between"
+                      className="relative text-left p-3 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group flex items-center justify-between"
                     >
-                      <div className="flex items-center gap-2 overflow-hidden">
+                      <div className="flex items-center gap-2 overflow-hidden pr-6">
                         <svg className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
@@ -828,9 +1239,38 @@ function GradePaper() {
                           </span>
                         </div>
                       </div>
-                      <svg className="w-4 h-4 text-gray-300 group-hover:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!window.confirm('Remove this student answer sheet? This will also delete its cropped regions.')) {
+                            return
+                          }
+                          documentsAPI
+                            .delete(doc.id)
+                            .then(() => {
+                              setUploadedDocs((prev) => ({
+                                ...prev,
+                                students: (prev.students || []).filter((s) => s.id !== doc.id)
+                              }))
+                              setRegionCountByDocId((prev) => {
+                                const next = { ...prev }
+                                delete next[doc.id]
+                                return next
+                              })
+                              toast.success('Student answer sheet removed')
+                            })
+                            .catch((err) => {
+                              toast.error(err?.response?.data?.detail || 'Failed to remove student answer sheet')
+                            })
+                        }}
+                        className="absolute top-1 right-1 p-1 rounded-full bg-white/80 text-gray-400 hover:text-red-600 hover:bg-red-50 shadow-sm transition-colors"
+                        title="Remove student answer sheet"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </button>
                   ))}
               </div>
@@ -839,26 +1279,17 @@ function GradePaper() {
 
           <div className="flex gap-3">
             <button
-              onClick={() => setStep(0)}
-              className="btn-secondary"
-            >
-              <svg className="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
-            </button>
-            <button
               onClick={handleProcess}
-              disabled={processing || !allStudentsCropped}
+              disabled={processing || examStatus === 'processing' || !allStudentsCropped}
               className="flex-1 btn-primary py-3 flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {processing ? (
+              {(processing || examStatus === 'processing') ? (
                 <>
                   <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Processing...
+                  {examStatus === 'processing' ? 'Processing in background...' : 'Processing...'}
                 </>
               ) : (
                 <>
@@ -870,79 +1301,42 @@ function GradePaper() {
               )}
             </button>
           </div>
-          {!processing && studentDocs.length > 0 && !allStudentsCropped && (
+          {(!processing && examStatus !== 'processing' && studentDocs.length > 0 && !allStudentsCropped) && (
             <p className="text-xs text-amber-600 mt-2">
               Please crop at least one answer region for each student document before starting processing.
+            </p>
+          )}
+          {examStatus === 'processing' && (
+            <p className="text-xs text-gray-500 mt-2">
+              Processing is running in the background. You can stay on this page or navigate away.
             </p>
           )}
         </div>
       )}
 
-      {/* Step 3: Generate Marking Guide */}
+      {/* Step 3: Review Marking Guide */}
       {step === 2 && (
-        <div className="card p-6 space-y-6 animate-fade-in">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Generate Marking Guide</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              The AI will analyze the question paper and answer scheme to generate a marking guide template.
-            </p>
-          </div>
-
-          <div className="bg-indigo-50/30 border border-indigo-100 rounded-xl p-4 flex items-start gap-3">
-            <svg className="w-5 h-5 text-indigo-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm text-indigo-700">
-              The AI will attempt to identify questions and expected answers automatically. You can edit the results in the next step.
-            </p>
-          </div>
-
-          <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="btn-secondary">
-              Back
-            </button>
-            <button
-              onClick={handleGenerateGuide}
-              disabled={loading}
-              className="flex-1 btn-primary py-3 flex justify-center items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                  Generate Marking Guide
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3b: Edit Marking Guide */}
-      {step === 3 && (
         <div className="card p-6 space-y-6 animate-fade-in">
           <div className="flex justify-between items-start">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Review Marking Guide</h2>
               <p className="text-sm text-gray-500 mt-1">Edit questions, types, and marks as needed.</p>
             </div>
-            <button onClick={handleAddQuestion} className="btn-secondary text-sm flex items-center gap-1">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Question
-            </button>
           </div>
 
+          {markingGuide.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <svg className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-800">No questions generated</p>
+                <p className="text-sm text-amber-700 mt-0.5">
+                  The AI may not have returned a structured list, or the question paper/answer scheme text was empty. Generate the guide again to populate questions.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto rounded-xl border border-gray-100">
             <table className="w-full">
               <thead>
@@ -956,53 +1350,109 @@ function GradePaper() {
               </thead>
               <tbody>
                 {markingGuide.map((q, i) => (
-                  <tr key={q.id} className="table-row">
-                    <td className="px-4 py-3">
-                      <input
-                        value={q.question_number}
-                        onChange={(e) => updateGuideQuestion(i, 'question_number', e.target.value)}
-                        className="w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        value={q.question_text || ''}
-                        onChange={(e) => updateGuideQuestion(i, 'question_text', e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="Enter question text..."
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={q.question_type || 'short_answer'}
-                        onChange={(e) => updateGuideQuestion(i, 'question_type', e.target.value)}
-                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
-                      >
-                        <option value="short_answer">Short Answer</option>
-                        <option value="essay">Essay</option>
-                        <option value="mcq">MCQ</option>
-                        <option value="calculation">Calculation</option>
-                      </select>
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        value={q.max_marks || 0}
-                        onChange={(e) => updateGuideQuestion(i, 'max_marks', parseFloat(e.target.value))}
-                        className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => handleDeleteQuestion(i)}
-                        className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </td>
-                  </tr>
+                  <React.Fragment key={q.id}>
+                    <tr className="table-row align-top">
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center justify-center w-16 px-2 py-1.5 rounded-lg text-sm font-medium text-gray-800 bg-gray-50 border border-gray-100">
+                          {q.question_number}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          value={q.question_text || ''}
+                          onChange={(e) => updateGuideQuestion(i, 'question_text', e.target.value)}
+                          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                          placeholder="Enter question text..."
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={q.question_type || 'short_answer'}
+                          onChange={(e) => updateGuideQuestion(i, 'question_type', e.target.value)}
+                          className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                        >
+                          <option value="short_answer">Short Answer</option>
+                          <option value="essay">Essay</option>
+                          <option value="mcq">MCQ</option>
+                          <option value="calculation">Calculation</option>
+                        </select>
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number"
+                          value={q.max_marks || 0}
+                          onChange={(e) => updateGuideQuestion(i, 'max_marks', parseFloat(e.target.value))}
+                          className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handleDeleteQuestion(i)}
+                          className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                    <tr className="bg-gray-50/60">
+                      <td className="px-4 pt-1 pb-2 text-left align-top text-[11px] font-medium text-gray-500">
+                        Answer guide
+                      </td>
+                      <td className="px-4 py-2 align-top" colSpan={4}>
+                        <div className="relative group">
+                          <textarea
+                            value={answerGuideDrafts[q.id] ?? q.answer_scheme ?? ''}
+                            onChange={(e) =>
+                              setAnswerGuideDrafts((prev) => ({
+                                ...prev,
+                                [q.id]: e.target.value
+                              }))
+                            }
+                            rows={6}
+                            className="w-full min-h-[120px] px-3 py-2 pr-16 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500 resize-y bg-white"
+                            placeholder="Describe the ideal/correct answer, key points, marking notes..."
+                          />
+                          {savingAnswerGuideId === q.id ? (
+                            <span className="absolute bottom-2 right-3 text-[11px] text-gray-400 select-none">
+                              Saving...
+                            </span>
+                          ) : (answerGuideDrafts[q.id] ?? q.answer_scheme ?? '') !== (q.answer_scheme ?? '') ? (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const draft = answerGuideDrafts[q.id] ?? ''
+                                setSavingAnswerGuideId(q.id)
+                                try {
+                                  const res = await markingGuideAPI.updateQuestion(q.id, {
+                                    answer_scheme: draft
+                                  })
+                                  setMarkingGuide((prev) =>
+                                    prev.map((g) => (g.id === q.id ? res.data : g))
+                                  )
+                                  setAnswerGuideDrafts((prev) => ({
+                                    ...prev,
+                                    [q.id]: res.data.answer_scheme || ''
+                                  }))
+                                  toast.success('Answer guide saved')
+                                } catch (err) {
+                                  toast.error(
+                                    err?.response?.data?.detail || 'Failed to save answer guide'
+                                  )
+                                } finally {
+                                  setSavingAnswerGuideId(null)
+                                }
+                              }}
+                              className="absolute bottom-2 right-2 px-2.5 py-1 text-[11px] font-medium rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                            >
+                              Save
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
@@ -1051,9 +1501,13 @@ function GradePaper() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden my-4">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Detected Regions</h3>
+                <h3 className="text-lg font-bold text-gray-900">
+                  {selectedDocType === 'question'
+                    ? 'Crop Question Paper Region'
+                    : 'Crop Student Answer Region'}
+                </h3>
                 <p className="text-xs text-gray-500">
-                  Draw boxes on the page image to capture student answers, then review OCR text per region.
+                  Scroll and drag to crop on desired region
                 </p>
               </div>
               <button 
@@ -1078,7 +1532,6 @@ function GradePaper() {
                   <div className="w-full md:w-[45%] md:min-w-[280px] md:max-w-[50%] flex-shrink-0 min-h-0 overflow-y-auto overflow-x-hidden">
                     {pages.length > 0 && (
                       <div className="w-full min-w-0 space-y-6">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Exam pages — scroll and drag to crop on any page</h4>
                         {loadingPageImages ? (
                           <div className="flex items-center justify-center min-h-[40vh] w-full bg-gray-100 rounded-xl">
                             <div className="animate-spin rounded-full h-10 w-10 border-2 border-indigo-200 border-t-indigo-600" />
@@ -1155,23 +1608,29 @@ function GradePaper() {
                                       const y = b.y ?? 0
                                       const w = b.width ?? 0
                                       const h = b.height ?? 0
+                                      const color = regionColorMap[r.id]
+                                      const borderClass = color ? color.fillBorder : 'border-emerald-500/90'
+                                      const bgClass = color ? color.fillBg : 'bg-emerald-400/25'
                                       return (
-                                      <div
-                                        key={r.id}
-                                        className="absolute border-2 border-emerald-500/90 bg-emerald-400/25 pointer-events-none flex items-center justify-center"
-                                        style={{
-                                          left: `${(x / nw) * 100}%`,
-                                          top: `${(y / nh) * 100}%`,
-                                          width: `${(w / nw) * 100}%`,
-                                          height: `${(h / nh) * 100}%`
-                                        }}
-                                      >
-                                        <span className="text-[10px] font-bold text-emerald-800/80 drop-shadow-sm">
-                                          Q{regions.findIndex(reg => reg.id === r.id) + 1}
-                                        </span>
-                                      </div>
-                                    )
-                                  })
+                                        <div
+                                          key={r.id}
+                                          className={`absolute border-2 ${borderClass} ${bgClass} pointer-events-none`}
+                                          style={{
+                                            left: `${(x / nw) * 100}%`,
+                                            top: `${(y / nh) * 100}%`,
+                                            width: `${(w / nw) * 100}%`,
+                                            height: `${(h / nh) * 100}%`
+                                          }}
+                                        >
+                                          {/* Question label pill anchored near the left edge of the region */}
+                                          <div className="absolute left-1 top-1">
+                                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-white/90 text-emerald-900/80 shadow-sm">
+                                              {regionColorMap[r.id]?.label || `Q${regions.findIndex(reg => reg.id === r.id) + 1}`}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )
+                                    })
                                 })()}
                               </div>
                             )
@@ -1184,7 +1643,7 @@ function GradePaper() {
                   {/* Right: Extracted answers (independently scrollable) */}
                   <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
                     <div className="flex items-center gap-2 mb-3 flex-shrink-0">
-                      <h4 className="text-sm font-semibold text-gray-700">Extracted answer</h4>
+                      <h4 className="text-sm font-semibold text-gray-700">Extracted Text</h4>
                       {processingNewCrop && (
                         <span className="inline-flex items-center gap-1 text-xs text-indigo-600">
                           <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
@@ -1242,10 +1701,51 @@ function GradePaper() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
                                   </svg>
                                 </span>
-                                <span className="text-xs font-semibold px-2 py-1 rounded-md bg-gray-200 text-gray-800">
-                                  Q{index + 1}
-                                </span>
+                                {(() => {
+                                  const badgeClass =
+                                    regionColorMap[region.id]?.badge || 'bg-gray-200 text-gray-800'
+                                  // For question paper, keep using the full label (with fallback index)
+                                  if (selectedDocType === 'question') {
+                                    return (
+                                      <span className={`text-xs font-semibold px-2 py-1 rounded-md ${badgeClass}`}>
+                                        {region.question_number ||
+                                          regionColorMap[region.id]?.label ||
+                                          `Q${index + 1}`}
+                                      </span>
+                                    )
+                                  }
+                                  // For student answers, NEVER derive the label from index/colour map.
+                                  // Only use the explicit question_number so it stays fixed when reordered.
+                                  return (
+                                    <span className={`text-xs font-semibold px-2 py-1 rounded-md ${badgeClass}`}>
+                                      {region.question_number || 'Q ?'}
+                                    </span>
+                                  )
+                                })()}
                                 <span className="badge-draft">Page {region.page_number}</span>
+                                {selectedDocType === 'question' && (
+                                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                                    <span>Marks:</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={region.marks ?? ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value === '' ? null : Number(e.target.value)
+                                        setRegions(prev => {
+                                          const next = prev.map(r =>
+                                            r.id === region.id ? { ...r, marks: val } : r
+                                          )
+                                          return next
+                                        })
+                                        processingAPI
+                                          .updateRegionText(region.id, { marks: val })
+                                          .catch(() => {})
+                                      }}
+                                      className="w-14 px-1 py-0.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                    />
+                                  </div>
+                                )}
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <button
@@ -1277,14 +1777,245 @@ function GradePaper() {
                               </div>
                             </div>
                             <div className="bg-gray-50 rounded-lg border border-gray-200">
+                              {selectedDocType === 'question' && (() => {
+                                const label = region.question_number || regionColorMap[region.id]?.label || `Q${index + 1}`
+                                const { main, part, sub } = parseQuestionComponents(label)
+
+                                // Enforce non-decreasing main question number based on earlier regions
+                                const previous = regions.slice(0, index)
+                                const maxMainSoFar = previous.reduce((max, r) => {
+                                  const lbl = r.question_number || regionColorMap[r.id]?.label || `Q${regions.findIndex(reg => reg.id === r.id) + 1}`
+                                  const { main: mPrev } = parseQuestionComponents(lbl)
+                                  return mPrev && mPrev > max ? mPrev : max
+                                }, 0)
+
+                                const effectiveMain = main || Math.max(1, maxMainSoFar || 1)
+
+                                // For parts and subparts, enforce non-decreasing within the same main question
+                                const partOrder = (v) => {
+                                  if (!v || v === '-') return 0
+                                  const idx = PART_OPTIONS.indexOf(v)
+                                  return idx === -1 ? 0 : idx
+                                }
+                                const subOrder = (v) => {
+                                  if (!v || v === '-') return 0
+                                  const idx = SUBPART_OPTIONS.indexOf(v)
+                                  return idx === -1 ? 0 : idx
+                                }
+
+                                let maxPartSoFar = 0
+                                let maxSubSoFar = 0
+                                const usedSubsForCurrentPart = new Set()
+                                previous.forEach((r) => {
+                                  const lbl = r.question_number || regionColorMap[r.id]?.label || `Q${regions.findIndex(reg => reg.id === r.id) + 1}`
+                                  const { main: mPrev, part: pPrev, sub: sPrev } = parseQuestionComponents(lbl)
+                                  if (mPrev === effectiveMain) {
+                                    maxPartSoFar = Math.max(maxPartSoFar, partOrder(pPrev))
+                                    if ((pPrev || '-') === (part || '-')) {
+                                      const so = subOrder(sPrev)
+                                      maxSubSoFar = Math.max(maxSubSoFar, so)
+                                      if (sPrev) usedSubsForCurrentPart.add(sPrev)
+                                    }
+                                  }
+                                })
+
+                                const handleChange = (nextMain, nextPart, nextSub) => {
+                                  const finalLabel = formatQuestionLabel(nextMain, nextPart, nextSub)
+                                  setRegions(prev =>
+                                    prev.map(r =>
+                                      r.id === region.id ? { ...r, question_number: finalLabel } : r
+                                    )
+                                  )
+                                  processingAPI
+                                    .updateRegionText(region.id, { question_number: finalLabel })
+                                    .catch(() => {})
+                                }
+
+                                return (
+                                  <div className="px-3 pt-2 pb-1 flex flex-wrap items-center gap-2">
+                                    <span className="text-[11px] font-medium text-gray-600">
+                                      Question number
+                                    </span>
+                                    {/* Main question (Q1..Q6). When main changes, reset part+sub to smallest allowed */}
+                                    <select
+                                      value={effectiveMain}
+                                      onChange={(e) => {
+                                        const nextMain = parseInt(e.target.value, 10)
+                                        // Recompute constraints for this main question based on previous regions
+                                        const prevForMain = previous.filter((r) => {
+                                          const lbl = r.question_number || regionColorMap[r.id]?.label || `Q${regions.findIndex(reg => reg.id === r.id) + 1}`
+                                          const { main: mPrev } = parseQuestionComponents(lbl)
+                                          return mPrev === nextMain
+                                        })
+
+                                        let maxPartForMain = 0
+                                        const partOrderFor = (v) => {
+                                          if (!v || v === '-') return 0
+                                          const idx = PART_OPTIONS.indexOf(v)
+                                          return idx === -1 ? 0 : idx
+                                        }
+                                        prevForMain.forEach((r) => {
+                                          const lbl = r.question_number || regionColorMap[r.id]?.label || ''
+                                          const { part: pPrev } = parseQuestionComponents(lbl)
+                                          maxPartForMain = Math.max(maxPartForMain, partOrderFor(pPrev))
+                                        })
+
+                                        // Pick smallest allowed part for this main
+                                        let nextPart = 'a'
+                                        for (const pOpt of PART_OPTIONS) {
+                                          if (pOpt === '-') continue
+                                          const disabled = partOrderFor(pOpt) < maxPartForMain
+                                          if (!disabled) {
+                                            nextPart = pOpt
+                                            break
+                                          }
+                                        }
+
+                                        // For that (main, part), find smallest allowed sub (respecting previous uses)
+                                        const prevForMainPart = prevForMain.filter((r) => {
+                                          const lbl = r.question_number || regionColorMap[r.id]?.label || ''
+                                          const { part: pPrev } = parseQuestionComponents(lbl)
+                                          return (pPrev || '-') === nextPart
+                                        })
+                                        const subOrderFor = (v) => {
+                                          if (!v || v === '-') return 0
+                                          const idx = SUBPART_OPTIONS.indexOf(v)
+                                          return idx === -1 ? 0 : idx
+                                        }
+                                        let maxSubForMainPart = 0
+                                        const usedSubs = new Set()
+                                        prevForMainPart.forEach((r) => {
+                                          const lbl = r.question_number || regionColorMap[r.id]?.label || ''
+                                          const { sub: sPrev } = parseQuestionComponents(lbl)
+                                          const so = subOrderFor(sPrev)
+                                          maxSubForMainPart = Math.max(maxSubForMainPart, so)
+                                          if (sPrev) usedSubs.add(sPrev)
+                                        })
+                                        let nextSub = '-'
+                                        for (const sOpt of SUBPART_OPTIONS) {
+                                          const disabled =
+                                            (subOrderFor(sOpt) < maxSubForMainPart && sOpt !== '-') ||
+                                            (usedSubs.has(sOpt) && sOpt !== '-')
+                                          if (!disabled) {
+                                            nextSub = sOpt
+                                            break
+                                          }
+                                        }
+
+                                        handleChange(nextMain, nextPart, nextSub)
+                                      }}
+                                      className="px-1.5 py-1 text-xs border border-gray-200 rounded-md bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                    >
+                                      {MAIN_QUESTION_OPTIONS.map((qNo) => {
+                                        const disabled = qNo < maxMainSoFar
+                                        return (
+                                          <option
+                                            key={qNo}
+                                            value={qNo}
+                                            disabled={disabled}
+                                            className={disabled ? 'text-gray-400' : undefined}
+                                          >
+                                            Q{qNo}
+                                          </option>
+                                        )
+                                      })}
+                                    </select>
+                                    {/* Part (a..j). When part changes, reset sub to smallest allowed for that part */}
+                                    <select
+                                      value={part || '-'}
+                                      onChange={(e) => {
+                                        const nextPart = e.target.value
+
+                                        // For this (main, nextPart), compute smallest allowed sub
+                                        const subOrderFor = (v) => {
+                                          if (!v || v === '-') return 0
+                                          const idx = SUBPART_OPTIONS.indexOf(v)
+                                          return idx === -1 ? 0 : idx
+                                        }
+
+                                        let maxSubForPart = 0
+                                        const usedSubs = new Set()
+                                        previous.forEach((r) => {
+                                          const lbl = r.question_number || regionColorMap[r.id]?.label || `Q${regions.findIndex(reg => reg.id === r.id) + 1}`
+                                          const { main: mPrev, part: pPrev, sub: sPrev } = parseQuestionComponents(lbl)
+                                          if (mPrev === effectiveMain && (pPrev || '-') === nextPart) {
+                                            const so = subOrderFor(sPrev)
+                                            maxSubForPart = Math.max(maxSubForPart, so)
+                                            if (sPrev) usedSubs.add(sPrev)
+                                          }
+                                        })
+
+                                        let nextSub = '-'
+                                        for (const sOpt of SUBPART_OPTIONS) {
+                                          const disabled =
+                                            (subOrderFor(sOpt) < maxSubForPart && sOpt !== '-') ||
+                                            (usedSubs.has(sOpt) && sOpt !== '-')
+                                          if (!disabled) {
+                                            nextSub = sOpt
+                                            break
+                                          }
+                                        }
+
+                                        handleChange(effectiveMain, nextPart, nextSub)
+                                      }}
+                                      className="px-1.5 py-1 text-xs border border-gray-200 rounded-md bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                    >
+                                      {PART_OPTIONS.map((pOpt) => {
+                                        const disabled = partOrder(pOpt) < maxPartSoFar && pOpt !== '-'
+                                        return (
+                                          <option
+                                            key={pOpt}
+                                            value={pOpt}
+                                            disabled={disabled}
+                                            className={disabled ? 'text-gray-400' : undefined}
+                                          >
+                                            {pOpt}
+                                          </option>
+                                        )
+                                      })}
+                                    </select>
+                                    {/* Subpart (i..xiii) – cannot reuse same sub for same main+part */}
+                                    <select
+                                      value={sub || '-'}
+                                      onChange={(e) => {
+                                        const nextSub = e.target.value
+                                        handleChange(effectiveMain, part || '-', nextSub)
+                                      }}
+                                      className="px-1.5 py-1 text-xs border border-gray-200 rounded-md bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                    >
+                                      {SUBPART_OPTIONS.map((sOpt) => {
+                                        const disabled =
+                                          (subOrder(sOpt) < maxSubSoFar && sOpt !== '-') ||
+                                          (usedSubsForCurrentPart.has(sOpt) && sOpt !== (sub || '-'))
+                                        return (
+                                          <option
+                                            key={sOpt}
+                                            value={sOpt}
+                                            disabled={disabled}
+                                            className={disabled ? 'text-gray-400' : undefined}
+                                          >
+                                            {sOpt}
+                                          </option>
+                                        )
+                                      })}
+                                    </select>
+                                  </div>
+                                )
+                              })()}
                               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-3 pt-2">
-                                Extracted answer (editable)
+                                Extracted text (editable)
                               </label>
                               <textarea
                                 value={region.raw_text ?? ''}
                                 onChange={(e) => {
                                   const value = e.target.value
-                                  setRegions(prev => prev.map(r => r.id === region.id ? { ...r, raw_text: value } : r))
+                                  setRegions(prev =>
+                                    prev.map(r =>
+                                      r.id === region.id
+                                        ? { ...r, raw_text: value }
+                                        : r
+                                    )
+                                  )
                                 }}
                                 onFocus={() => { editFocusRef.current = { id: region.id, value: region.raw_text ?? '' } }}
                                 onBlur={(e) => {
@@ -1306,8 +2037,17 @@ function GradePaper() {
               )}
             </div>
             
-            <div className="p-4 border-t border-gray-100 bg-white flex justify-end">
-              <button 
+            <div className="p-4 border-t border-gray-100 bg-white flex items-center justify-end gap-4">
+              {selectedDocType === 'question' && (
+                <span className="text-sm font-medium text-gray-700">
+                  Total marks:{' '}
+                  {(regions || []).reduce(
+                    (sum, r) => sum + (Number.isFinite(r.marks) ? Number(r.marks) : 0),
+                    0
+                  )}
+                </span>
+              )}
+              <button
                 onClick={() => handleCloseRegionModal()}
                 className="btn-primary"
               >

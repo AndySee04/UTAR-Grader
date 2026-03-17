@@ -23,8 +23,10 @@ class GradeUpdate(BaseModel):
 
 
 class StudentGradeDetail(BaseModel):
+    id: str
     question_number: str
     question_text: Optional[str]
+    answer_scheme: Optional[str]
     student_answer: Optional[str]
     score: Optional[float]
     max_marks: Optional[float]

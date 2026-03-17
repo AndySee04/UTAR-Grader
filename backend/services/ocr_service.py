@@ -249,5 +249,8 @@ class OCRService:
         return 0.5  # Default if no scores
 
 
-# Singleton instance - lazy loaded
+# Singleton instances - lazy loaded
+# Default instance is optimized for handwriting (student answers).
 ocr_service = OCRService()
+# Separate instance using the printed-text TrOCR model, better for question papers
+ocr_service_printed = OCRService("microsoft/trocr-base-printed")
