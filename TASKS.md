@@ -100,16 +100,13 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 
 ## Phase 5: Grade Paper - Step 2 (Process Documents)
 
-- [x] PDF to images service (PyMuPDF)
+- [x] PDF to images service (PyMuPDF) for converting uploaded PDFs into pages
 - [x] OpenCV preprocessing (grayscale, threshold, denoise)
-- [x] Text region detection (contours)
-- [x] TrOCR integration for text extraction
-- [x] LLM text cleanup and structuring
-- [x] Store extracted text in database
-- [x] Store LLM responses in database
-- [x] Frontend: Processing progress display
-- [x] Frontend: Detected regions list with edit option
-- [x] Frontend: Manual crop tool (fallback)
+- [x] Text region detection (contours) and manual region drawing
+- [x] TrOCR integration for **per‑region** text extraction
+- [x] Store extracted text and marks per region in `extracted_text` table
+- [x] Frontend: Processing step with crop status and progress per student
+- [x] Frontend: Question paper and student answer crop tools (current UI)
 
 ### Files Created:
 
@@ -125,13 +122,12 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 
 ## Phase 6: Grade Paper - Step 3 (Marking Guide)
 
-- [x] LLM marking guide generation from extracted text
+- [x] Build marking guide directly from cropped **question paper regions** (no separate answer‑scheme PDF)
 - [x] Store marking guide in database
 - [x] Update marking guide endpoint
 - [x] Add/delete questions endpoints
-- [x] Frontend: Editable marking guide table
-- [x] Frontend: Question type dropdown
-- [x] Frontend: Marks input
+- [x] Frontend: Editable marking guide table (question text, marks, type, answer guide)
+- [x] Frontend: Answer guide textarea per question (`marking_guide.answer_scheme`)
 
 ### Files Created:
 
@@ -143,13 +139,13 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 
 ## Phase 7: Grade Paper - Step 4 (Grading)
 
-- [x] Background grading task (async processing)
-- [x] LLM grading service for each answer
-- [x] Store grades with LLM response link
-- [x] Calculate totals per student
+- [x] LLM grading service that compares **cropped student answer text** with answer guide per question
+- [x] Parse LLM responses into whole‑number scores, ignoring feedback text
+- [x] Store grades with links to `student_answers` and `llm_responses`
+- [x] Calculate totals per student and persist in `grading_summary`
+- [x] Allow manual teacher override for each per‑question score and reflect it immediately in the UI
 - [x] Update exam status (grading -> completed)
-- [x] Frontend: Grading started confirmation
-- [x] Frontend: Redirect to Exam List
+- [x] Frontend: Results page per exam with per‑question scores, student answers, and answer guides
 
 ### Files Created:
 

@@ -4,13 +4,13 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 
 ## Features
 
-- Upload exam question papers, answer schemes, and student answer sheets (PDF)
-- **Optional question paper cropping** before processing to reduce processing time
+- Upload exam question papers and student answer sheets (PDF)
+- **Region-based question paper cropping**: draw regions per question; each region is OCR‑ed and stored with its question number and marks
 - **Manual cropping of student answers**: draw regions per document, OCR runs on each cropped region; progress is saved so teachers can resume later
-- **Start Processing** runs in the background (separate process): processes question paper and answer scheme only; question paper is skipped if already cropped
-- Automatic text extraction using TrOCR (handwriting recognition)
-- AI-powered marking guide generation (from question paper and answer scheme)
-- Automated grading with LLM
+- **Start Processing** builds the marking guide directly from cropped **question paper regions** (no separate answer‑scheme PDF needed)
+- Automatic text extraction using TrOCR (printed text for question papers, handwriting for student answers)
+- AI-powered marking guide generation from cropped question regions
+- Automated grading with LLM using per‑question cropped student answers and your answer guides
 - Teacher override for scores
 - Export results to Excel and PDF
 
@@ -19,7 +19,7 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 - **Backend**: FastAPI (Python)
 - **Frontend**: React + Vite + TailwindCSS
 - **Database**: SQLite (development) / PostgreSQL (production)
-- **OCR**: TrOCR (microsoft/trocr-base-handwritten)
+- **OCR**: TrOCR (microsoft/trocr-base-printed for question papers, microsoft/trocr-base-handwritten for student answers)
 - **LLM**: Ollama + Llama 3 / Mistral
 - **GPU**: NVIDIA RTX 4060 recommended
 
@@ -27,14 +27,14 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 
 1. **Step 1 – Upload & Crop**
    - Upload the **question paper** PDF and one or more **student answer** PDFs.
-   - **Crop the question paper**: open the question paper, draw regions around each question; OCR runs per region and the extracted text is saved in the backend.
-   - **Crop each student answer**: open each student document, draw regions over answer areas; OCR runs per region. Cropped regions and extracted text are saved when you close the document.
-2. **Step 2 – Build & Review Marking Guide**  
+   - **Crop the question paper**: open the question paper, draw regions around each question; OCR runs per region and the extracted text (without trailing “x marks”) plus marks value are saved.
+   - **Crop each student answer**: open each student document, draw regions over answer areas; OCR runs per region and the per‑question answer text is saved.
+2. **Step 2 – Review Marking Guide**  
    - Click **Start Processing**. The app reads the cropped **question paper regions** (and their extracted text stored in `ExtractedText`) and automatically builds a marking guide: one entry per cropped region, including question number, question text, and marks.
-   - Review and edit the generated marking guide (question numbers, wording, marks, and answer guides) in the **Marking Guide** step.
+   - In the **Marking Guide** step, review and edit question numbers, wording, marks, and write an **answer guide** for each question (stored in `marking_guide.answer_scheme`).
 3. **Step 3 – Grade**  
-   - Grade student papers against the marking guide. The LLM compares each student's cropped answer text with your answer guide and assigns a score.
-   - Override scores manually if needed and export results.
+   - Start grading to compare each student's cropped answer text with your answer guide using the LLM and assign a **whole‑number score** per question.
+   - Override scores manually if needed (overrides are saved immediately) and export results to Excel/PDF.
 
 ## Prerequisites
 
@@ -104,12 +104,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 The API will be available at `http://localhost:8000`
 
-When you click **Start Processing** in the app, the API spawns a worker process (`scripts/process_exam_worker.py`) to run OCR in the background. The worker’s progress messages (e.g. “Page 1/3 — loading image…”) appear in the **same terminal** where you started the backend (`python main.py`). You can also run processing manually for an exam:
-
-```bash
-cd backend
-python -m scripts.process_exam_worker <exam_id>
-```
+In the current workflow, **Start Processing** does not spawn a separate worker for full‑page OCR. Instead, it uses the already‑cropped question paper regions and their stored OCR text to build the marking guide immediately. Student answers are graded later using the per‑region OCR text captured during cropping.
 
 ### 6. Run the Frontend
 
