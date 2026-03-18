@@ -25,14 +25,14 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 
 ## Workflow
 
-1. **Step 1 – Upload & Crop**
+- **Step 1 – Upload & Crop**
    - Upload the **question paper** PDF and one or more **student answer** PDFs.
    - **Crop the question paper**: open the question paper, draw regions around each question; OCR runs per region and the extracted text (without trailing “x marks”) plus marks value are saved.
    - **Crop each student answer**: open each student document, draw regions over answer areas; OCR runs per region and the per‑question answer text is saved.
-2. **Step 2 – Review Marking Guide**  
+- **Step 2 – Review Marking Guide**  
    - Click **Start Processing**. The app reads the cropped **question paper regions** (and their extracted text stored in `ExtractedText`) and automatically builds a marking guide: one entry per cropped region, including question number, question text, and marks.
    - In the **Marking Guide** step, review and edit question numbers, wording, marks, and write an **answer guide** for each question (stored in `marking_guide.answer_scheme`).
-3. **Step 3 – Grade**  
+- **Step 3 – Grade**  
    - Start grading to compare each student's cropped answer text with your answer guide using the LLM and assign a **whole‑number score** per question.
    - Override scores manually if needed (overrides are saved immediately) and export results to Excel/PDF.
 
@@ -43,70 +43,25 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 - NVIDIA GPU with CUDA (for TrOCR acceleration)
 - Ollama installed ([https://ollama.ai](https://ollama.ai))
 
-## Setup Instructions
+## Quick start
 
-### 1. Clone the Repository
-
-```bash
-git clone <repository-url>
-cd "Auto Exam Grading Website"
-```
-
-### 2. Backend Setup
+### Backend (FastAPI)
 
 ```bash
-# Create virtual environment (use venv or .venv)
 python -m venv .venv
 
 # Activate virtual environment
-# Windows:
 .venv\Scripts\activate
-# Linux/Mac:
-source .venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Install and Run Ollama
-
-```bash
-# Download Ollama from https://ollama.ai
-
-# In one terminal, start the Ollama server (keep this running):
-ollama serve
-
-# In another terminal, pull a model:
-ollama pull llama3:8b
-# Or for faster inference:
-ollama pull mistral:7b
-```
-
-### 4. Verify GPU/CUDA (Optional but Recommended)
-
-```python
-# Run in Python to verify CUDA is available
-import torch
-print(f"CUDA available: {torch.cuda.is_available()}")
-print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'}")
-```
-
-### 5. Run the Backend
-
-From the project root, run the API from the `backend` directory:
-
-```bash
 cd backend
 python main.py
-# Or with uvicorn directly:
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`
+Backend runs at `http://localhost:8000` (docs: `http://localhost:8000/docs`).
 
-In the current workflow, **Start Processing** does not spawn a separate worker for full‑page OCR. Instead, it uses the already‑cropped question paper regions and their stored OCR text to build the marking guide immediately. Student answers are graded later using the per‑region OCR text captured during cropping.
-
-### 6. Run the Frontend
+### Frontend (Vite)
 
 ```bash
 cd frontend
@@ -114,7 +69,39 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`
+Frontend runs at `http://localhost:5173`.
+
+### Ollama (LLM server)
+
+```bash
+ollama serve
+
+ollama pull llama3:8b
+```
+
+Ollama is required for grading (and any other LLM features you enable).
+
+## Debugging (optional)
+
+### Log Ollama request/response (backend terminal)
+
+To print the **exact Ollama request payload** and **raw response** in the backend terminal:
+
+```powershell
+$env:OLLAMA_DEBUG="1"
+$env:OLLAMA_DEBUG_MAX_CHARS="8000"  # optional
+```
+
+Restart the backend after setting these.
+
+### Verify GPU/CUDA
+
+```python
+# Run in Python to verify CUDA is available
+import torch
+print(f"CUDA available: {torch.cuda.is_available()}")
+print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'}")
+```
 
 ## Project Structure
 
@@ -129,7 +116,7 @@ Auto Exam Grading Website/
 │   ├── services/               # Business logic (OCR, LLM, etc.)
 │   ├── schemas/                # Pydantic schemas
 │   ├── scripts/
-│   │   └── process_exam_worker.py   # Background processing (question paper + answer scheme)
+│   │   └── process_exam_worker.py   # Legacy background processing (not used in current region-based flow)
 │   └── utils/                  # Utilities
 ├── frontend/
 │   ├── src/
@@ -144,13 +131,6 @@ Auto Exam Grading Website/
 ```
 
 The SQLite database is created in `backend/auto_grade.db` by default.
-
-## API Documentation
-
-Once the backend is running, visit:
-
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
 
 ## Environment Variables (Optional)
 

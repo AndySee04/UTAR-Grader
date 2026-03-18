@@ -32,6 +32,16 @@ from services.cv_service import cv_service
 
 router = APIRouter()
 
+def _norm_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip()).lower()
+
+
+def _quote_grounded(quote: str, student_answer: str) -> bool:
+    # whitespace-normalized substring match
+    q = _norm_ws(quote)
+    sa = _norm_ws(student_answer)
+    return bool(q) and (q in sa)
+
 
 @router.post("/exams/{exam_id}/grade", response_model=StartGradingResponse)
 async def start_grading(
@@ -217,6 +227,7 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                 raw = result.raw_response or ""
                 score_val = None
                 feedback_val = ""
+                confidence_val = None
 
                 # Look for "Score: 2.5/3.0" or "SCORE: 1.5"
                 # e.g. "**Score:** 2.5/3.0" or "SCORE: 1.5"
@@ -227,6 +238,20 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                     except Exception:
                         score_val = None
 
+                # Look for "Confidence: 0.82" or "confidence=82%"
+                m_conf = re.search(r"(?i)confidence\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\s*%?", raw)
+                if m_conf:
+                    try:
+                        conf_num = float(m_conf.group(1))
+                        confidence_val = conf_num / 100.0 if conf_num > 1.0 else conf_num
+                    except Exception:
+                        confidence_val = None
+
+                # Look for "Feedback: ..." (fallback only; JSON path preferred)
+                m_fb = re.search(r"(?is)feedback\s*[:=]\s*(.+)$", raw)
+                if m_fb:
+                    feedback_val = (m_fb.group(1) or "").strip()
+
                 if score_val is not None:
                     # Round to nearest whole number and clamp to [0, max_marks]
                     rounded = round(score_val)
@@ -235,7 +260,8 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                         rounded = max(0.0, min(max_m, rounded))
                     parsed = {
                         "score": rounded,
-                        "feedback": ""  # feedback disabled
+                        "confidence": confidence_val,
+                        "feedback": feedback_val
                     }
                 else:
                     # If we still can't parse, log a warning with a truncated preview
@@ -249,6 +275,23 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                         pass
                     parsed = parsed or {}
 
+            # Quote-grounding guardrail: if the model provided evidence_quotes,
+            # ensure at least one quote is grounded in the student answer. If not,
+            # force score=0 with low confidence to avoid hallucinated grading.
+            try:
+                quotes = parsed.get("evidence_quotes")
+                if isinstance(quotes, list):
+                    grounded_any = any(
+                        isinstance(q, str) and _quote_grounded(q, student_answer_text or "")
+                        for q in quotes
+                    )
+                    if not grounded_any:
+                        parsed["score"] = 0
+                        parsed["confidence"] = 0.0
+                        parsed["feedback"] = "No relevant evidence found in the student's answer for the marking scheme."
+            except Exception:
+                pass
+
             score = Decimal(str(parsed.get("score", 0)))
             max_marks = Decimal(str(guide.max_marks or 0))
 
@@ -256,7 +299,7 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
             llm_resp = LLMResponse(
                 exam_id=exam_id,
                 request_type="grading",
-                input_text=f"Q: {guide.question_text}\nStudent: {full_text[:500]}",
+                input_text=f"Q: {guide.question_text}\nStudent: {student_answer_text[:1000]}",
                 raw_response=result.raw_response,
                 parsed_response=parsed,
                 model_used=result.model_used,
@@ -278,6 +321,7 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                 llm_response=llm_resp,
                 score=score,
                 max_marks=max_marks,
+                confidence=parsed.get("confidence", None),
                 feedback=parsed.get("feedback", "")
             )
             db.add(grade)
@@ -352,8 +396,9 @@ async def get_exam_grades(
                 question_text=mg.question_text if mg else "",
                 answer_scheme=mg.answer_scheme if mg else "",
                 student_answer=sa.answer_text[:200] if sa and sa.answer_text else "",
-                score=float(g.score) if g.score else None,
-                max_marks=float(g.max_marks) if g.max_marks else None,
+                score=float(g.score) if g.score is not None else None,
+                max_marks=float(g.max_marks) if g.max_marks is not None else None,
+                confidence=float(g.confidence) if g.confidence is not None else None,
                 feedback=g.feedback,
                 is_overridden=g.is_overridden
             ))
@@ -417,8 +462,9 @@ async def get_student_grades(
             question_text=mg.question_text if mg else "",
             answer_scheme=mg.answer_scheme if mg else "",
             student_answer=sa.answer_text if sa else "",
-            score=float(g.score) if g.score else None,
-            max_marks=float(g.max_marks) if g.max_marks else None,
+            score=float(g.score) if g.score is not None else None,
+            max_marks=float(g.max_marks) if g.max_marks is not None else None,
+            confidence=float(g.confidence) if g.confidence is not None else None,
             feedback=g.feedback,
             is_overridden=g.is_overridden
         ))

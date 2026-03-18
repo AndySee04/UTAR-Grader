@@ -28,6 +28,40 @@ class LLMService:
         self.base_url = base_url
         self.model = model
         self.timeout = 120.0  # 2 minutes timeout for LLM calls
+        self.debug = os.getenv("OLLAMA_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+        self.debug_max_chars = int(os.getenv("OLLAMA_DEBUG_MAX_CHARS", "4000"))
+    
+    def _dbg(self, label: str, text: str):
+        if not self.debug:
+            return
+        try:
+            s = text or ""
+            if len(s) > self.debug_max_chars:
+                s = s[: self.debug_max_chars] + "\n... [truncated] ..."
+            print(f"\n[OLLAMA DEBUG] {label}\n{s}\n")
+        except Exception:
+            pass
+
+    def _compact_block(self, text: str) -> str:
+        """Compact user-provided text blocks to reduce prompt noise."""
+        s = (text or "").strip()
+        if not s:
+            return ""
+        # Normalize newlines and collapse excessive blank lines
+        s = s.replace("\r\n", "\n").replace("\r", "\n")
+        while "\n\n\n" in s:
+            s = s.replace("\n\n\n", "\n\n")
+        # For OCR / PDF-derived text, single newlines are often just line wraps.
+        # Preserve paragraph breaks (double newlines), but flatten single newlines to spaces.
+        parts = [p.strip() for p in s.split("\n\n")]
+        flattened = []
+        for p in parts:
+            p = " ".join(p.splitlines())
+            p = " ".join(p.split())
+            if p:
+                flattened.append(p)
+        s = "\n\n".join(flattened)
+        return s
     
     async def _call_ollama(self, prompt: str, system_prompt: Optional[str] = None) -> LLMResponse:
         """
@@ -52,10 +86,22 @@ class LLMService:
             "messages": messages,
             "stream": False,
             "options": {
-                "temperature": 0.3,  # Lower for more consistent outputs
+                "temperature": 0.1,  # Lower for more consistent outputs
                 "num_predict": 2048
             }
         }
+        
+        if self.debug:
+            try:
+                safe_payload = {
+                    "model": payload.get("model"),
+                    "stream": payload.get("stream"),
+                    "options": payload.get("options"),
+                    "messages": payload.get("messages"),
+                }
+                self._dbg("Request payload (api/chat)", json.dumps(safe_payload, indent=2, ensure_ascii=False))
+            except Exception:
+                pass
         
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -67,6 +113,21 @@ class LLMService:
         
         processing_time = int((time.time() - start_time) * 1000)
         raw_response = result.get("message", {}).get("content", "")
+        
+        if self.debug:
+            try:
+                meta = {
+                    "model": result.get("model"),
+                    "eval_count": result.get("eval_count"),
+                    "eval_duration": result.get("eval_duration"),
+                    "prompt_eval_count": result.get("prompt_eval_count"),
+                    "prompt_eval_duration": result.get("prompt_eval_duration"),
+                    "total_duration": result.get("total_duration"),
+                }
+                self._dbg("Response meta", json.dumps(meta, indent=2, ensure_ascii=False))
+                self._dbg("Raw response content", raw_response)
+            except Exception:
+                pass
         
         # Try to parse JSON from response
         parsed = self._try_parse_json(raw_response)
@@ -231,28 +292,42 @@ Return JSON array:
             LLMResponse with grading result JSON
         """
         system_prompt = """You are a strict but fair exam grader.
-Your only job is to assign a numerical score; do not provide explanations or feedback.
-Ignore minor grammar, spelling, or missing symbols/punctuation as long as the overall meaning and key points are correct.
-The score must not be in decimal increments, only whole numbers are allowed.
-The order of answer guide is not important, you can grade the answer in any order you want."""
 
-        prompt = f"""Grade this exam answer numerically only.
+Grading rules:
+- Grade ONLY on meaning and required key points from the marking scheme.
+- DO NOT deduct marks for spelling, grammar, punctuation, capitalization, or minor missing symbols if the intended meaning/key point is clear.
+- Treat common misspellings as correct (e.g., "verity" should count as "verify").
+- DO NOT mention spelling/grammar mistakes in feedback.
+- You MUST NOT invent content that is not in the student's answer.
 
-QUESTION:
-{question}
+Scoring rules:
+- The score must be a whole number (no decimals).
+- Follow the marking score stated in the answer scheme.
+- Score must be within [0, max_marks].
 
-MARKING SCHEME (Expected Answer):
-{answer_scheme}
+Return only valid JSON (no markdown, no extra text)."""
 
-STUDENT'S ANSWER:
-{student_answer}
+        q = self._compact_block(question)
+        scheme = self._compact_block(answer_scheme)
+        ans = self._compact_block(student_answer)
 
-MAXIMUM MARKS: {max_marks}
-
-Return JSON (no extra text):
-{{
-  "score": <number between 0 and {max_marks}>
-}}"""
+        # Keep the prompt compact but structured for stable grading.
+        prompt = (
+            "Grade this exam answer.\n"
+            f"Max marks: {max_marks}\n\n"
+            "Question:\n"
+            f"{q}\n\n"
+            "Marking scheme:\n"
+            f"{scheme}\n\n"
+            "Student answer:\n"
+            f"{ans}\n\n"
+            "Important:\n"
+            "- Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.\n"
+            "- Include 1–2 exact quotes copied from the student's answer as evidence.\n"
+            "- If there is no relevant evidence in the student's answer, return score 0.\n\n"
+            "Return JSON only:\n"
+            f'{{"score": <whole number 0..{max_marks}>, "confidence": <0..1>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}'
+        )
 
         return await self._call_ollama(prompt, system_prompt)
     

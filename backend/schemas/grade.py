@@ -8,6 +8,7 @@ class GradeResponse(BaseModel):
     student_answer_id: str
     score: Optional[float]
     max_marks: Optional[float]
+    confidence: Optional[float] = None
     feedback: Optional[str]
     is_overridden: bool
     original_score: Optional[float]
@@ -30,6 +31,7 @@ class StudentGradeDetail(BaseModel):
     student_answer: Optional[str]
     score: Optional[float]
     max_marks: Optional[float]
+    confidence: Optional[float] = None
     feedback: Optional[str]
     is_overridden: bool
 

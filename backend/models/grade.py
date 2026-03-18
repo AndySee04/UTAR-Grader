@@ -14,6 +14,7 @@ class Grade(Base):
     llm_response_id = Column(CHAR(36), ForeignKey("llm_responses.id"), nullable=True)
     score = Column(Numeric(5, 2), nullable=True)
     max_marks = Column(Numeric(5, 2), nullable=True)
+    confidence = Column(Numeric(5, 2), nullable=True)
     feedback = Column(Text, nullable=True)
     is_overridden = Column(Boolean, default=False)
     original_score = Column(Numeric(5, 2), nullable=True)

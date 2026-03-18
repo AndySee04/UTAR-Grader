@@ -32,3 +32,9 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE grades ADD COLUMN confidence REAL"))
+                conn.commit()
+        except Exception:
+            pass
