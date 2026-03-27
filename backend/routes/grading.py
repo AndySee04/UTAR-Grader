@@ -32,16 +32,6 @@ from services.cv_service import cv_service
 
 router = APIRouter()
 
-def _norm_ws(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip()).lower()
-
-
-def _quote_grounded(quote: str, student_answer: str) -> bool:
-    # whitespace-normalized substring match
-    q = _norm_ws(quote)
-    sa = _norm_ws(student_answer)
-    return bool(q) and (q in sa)
-
 
 #
 # NOTE: AI confidence scoring + auditor verification were removed.
@@ -280,23 +270,6 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                     except Exception:
                         pass
                     parsed = parsed or {}
-
-            # Quote-grounding guardrail: if the model provided evidence_quotes,
-            # ensure at least one quote is grounded in the student answer. If not,
-            # force score=0 with low confidence to avoid hallucinated grading.
-            try:
-                quotes = parsed.get("evidence_quotes")
-                if isinstance(quotes, list):
-                    grounded_any = any(
-                        isinstance(q, str) and _quote_grounded(q, student_answer_text or "")
-                        for q in quotes
-                    )
-                    if not grounded_any:
-                        parsed["score"] = 0
-                        parsed["confidence"] = 0.0
-                        parsed["feedback"] = "No relevant evidence found in the student's answer for the marking scheme."
-            except Exception:
-                pass
 
             score = Decimal(str(parsed.get("score", 0)))
             max_marks = Decimal(str(guide.max_marks or 0))

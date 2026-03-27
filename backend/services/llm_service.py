@@ -313,7 +313,7 @@ Rules:
 - Grade based only on the marking scheme.
 - Ignore spelling/grammar if meaning is clear.
 - Ignore punctuation/spacing/line breaks if meaning is clear.
-- Ignore incorrectsymbol/formating if meaning is clear.
+- Ignore incorrect symbol/formating if meaning is clear.
 - Do not infer or add missing points.
 
 Scoring:
@@ -322,30 +322,35 @@ Scoring:
 
 Output:
 Return valid JSON only:
-{"score": int, "feedback": string, "evidence_quotes": string[]}"""
+{"score": int, "feedback": string}"""
 
         q = self._compact_block(question)
         scheme = self._compact_block(answer_scheme)
         keypoints = self._compact_block(keypoint_marks)
         ans = self._compact_student_answer(student_answer)
         scheme_with_marks = self._annotate_scheme_with_keypoint_marks(scheme, keypoints)
+        max_marks_int = int(round(float(max_marks or 0)))
+        marks_per_keypoint = keypoints or "1"
+        answer_guide_header = (
+            f"Max {max_marks_int} marks, {marks_per_keypoint} marks for each similar keypoints"
+        )
 
         prompt = (
             "Question:\n"
             f"{q}\n\n"
             "Answer guide:\n"
-            f"- max_marks: {max_marks}\n"
-            f"- marks_per_keypoint: {keypoints or '1'}\n"
+            f"{answer_guide_header}\n"
+            f"- max_marks: {max_marks_int}\n"
+            f"- marks_per_keypoint: {marks_per_keypoint}\n"
             f"- marking_scheme:\n{scheme_with_marks or scheme}\n\n"
             "Student answer:\n"
             f"{ans}\n\n"
             "Instructions:\n"
             "- Ignore grammar/spelling/punctuation issues.\n"
             "- Match student answers to marking scheme by meaning.\n"
-            "- Each quote must support one keypoint.\n"
             "- Return score as an integer within [0, max_marks].\n\n"
             "Return JSON only.\n"
-            '{"score": int, "feedback": string, "evidence_quotes": string[]}'
+            '{"score": int, "feedback": string}'
         )
 
         return await self._call_ollama(prompt, system_prompt)
