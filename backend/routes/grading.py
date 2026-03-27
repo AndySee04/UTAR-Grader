@@ -43,6 +43,11 @@ def _quote_grounded(quote: str, student_answer: str) -> bool:
     return bool(q) and (q in sa)
 
 
+#
+# NOTE: AI confidence scoring + auditor verification were removed.
+#
+
+
 @router.post("/exams/{exam_id}/grade", response_model=StartGradingResponse)
 async def start_grading(
     exam_id: str,
@@ -321,7 +326,6 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                 llm_response=llm_resp,
                 score=score,
                 max_marks=max_marks,
-                confidence=parsed.get("confidence", None),
                 feedback=parsed.get("feedback", "")
             )
             db.add(grade)
@@ -398,7 +402,6 @@ async def get_exam_grades(
                 student_answer=sa.answer_text[:200] if sa and sa.answer_text else "",
                 score=float(g.score) if g.score is not None else None,
                 max_marks=float(g.max_marks) if g.max_marks is not None else None,
-                confidence=float(g.confidence) if g.confidence is not None else None,
                 feedback=g.feedback,
                 is_overridden=g.is_overridden
             ))
@@ -464,7 +467,6 @@ async def get_student_grades(
             student_answer=sa.answer_text if sa else "",
             score=float(g.score) if g.score is not None else None,
             max_marks=float(g.max_marks) if g.max_marks is not None else None,
-            confidence=float(g.confidence) if g.confidence is not None else None,
             feedback=g.feedback,
             is_overridden=g.is_overridden
         ))

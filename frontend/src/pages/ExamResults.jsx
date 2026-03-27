@@ -69,17 +69,6 @@ function ExamResults() {
     }
   }
 
-  const getConfidenceMeta = (confidence) => {
-    const c = Math.max(0, Math.min(1, Number(confidence)))
-    if (c >= 0.8) {
-      return { label: 'High', className: 'text-emerald-700 bg-emerald-50 border-emerald-100' }
-    }
-    if (c >= 0.6) {
-      return { label: 'Medium', className: 'text-amber-700 bg-amber-50 border-amber-100' }
-    }
-    return { label: 'Low', className: 'text-red-700 bg-red-50 border-red-100' }
-  }
-
   if (loading) {
     return (
       <div className="space-y-6">
@@ -229,14 +218,6 @@ function ExamResults() {
 
                       {/* Score display / edit */}
                       <div className="flex items-center gap-2">
-                        {grade.confidence != null && (() => {
-                          const meta = getConfidenceMeta(grade.confidence)
-                          return (
-                            <span className={`text-[11px] font-semibold border px-2 py-0.5 rounded-md ${meta.className}`}>
-                              Confidence: {meta.label}
-                            </span>
-                          )
-                        })()}
                         {editingGrade === grade.id ? (
                           <div className="flex items-center gap-1.5">
                             <input
@@ -317,13 +298,13 @@ function ExamResults() {
                       </div>
                     )}
 
-                    {grade.feedback && (
+                    {(grade.feedback != null) && (
                       <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-3 py-2">
                         <p className="text-[11px] font-medium uppercase tracking-wide text-indigo-500 mb-0.5">
                           AI feedback
                         </p>
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                          {grade.feedback}
+                          {(grade.feedback || 'No AI feedback returned for this answer.').trim()}
                         </p>
                       </div>
                     )}

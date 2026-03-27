@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 import sys
 import os
+import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -62,6 +63,31 @@ class LLMService:
                 flattened.append(p)
         s = "\n\n".join(flattened)
         return s
+
+    def _compact_student_answer(self, text: str) -> str:
+        """
+        Compact student answers while preserving list structure.
+        Unlike `_compact_block`, we try NOT to merge separate points into one line,
+        because that makes evidence extraction/counting unreliable.
+        """
+        s = (text or "").strip()
+        if not s:
+            return ""
+        s = s.replace("\r\n", "\n").replace("\r", "\n")
+        while "\n\n\n" in s:
+            s = s.replace("\n\n\n", "\n\n")
+        # Treat common separators as item boundaries.
+        s = s.replace("•", "\n").replace("·", "\n")
+        s = re.sub(r"[;,]\s*", "\n", s)
+        s = re.sub(r"\.\s+", "\n", s)
+        # Normalize lines
+        lines = []
+        for line in s.splitlines():
+            line = " ".join(line.split()).strip()
+            if line:
+                lines.append(line)
+        # Keep at most a reasonable number of lines to avoid prompt bloat.
+        return "\n".join(lines[:30])
     
     async def _call_ollama(self, prompt: str, system_prompt: Optional[str] = None) -> LLMResponse:
         """
@@ -199,39 +225,6 @@ Return the corrected text:"""
 
         return await self._call_ollama(prompt, system_prompt)
     
-    async def structure_questions(self, text: str) -> LLMResponse:
-        """
-        Structure extracted text into questions format.
-        
-        Args:
-            text: Extracted text from question paper
-            
-        Returns:
-            LLMResponse with structured questions JSON
-        """
-        system_prompt = """You are an exam paper analyzer. Extract questions from the text and structure them.
-Return a JSON array of questions. Each question should have:
-- question_number: The question number (e.g., "1", "1a", "2")
-- question_text: The full question text
-- question_type: One of "short_answer", "essay", "mcq", "calculation"
-- subquestions: Array of subquestions (if any), each with question_number and question_text"""
-
-        prompt = f"""Analyze this exam paper text and extract all questions:
-
-{text}
-
-Return JSON array:
-[
-  {{
-    "question_number": "1",
-    "question_text": "...",
-    "question_type": "short_answer",
-    "subquestions": []
-  }}
-]"""
-
-        return await self._call_ollama(prompt, system_prompt)
-    
     async def generate_marking_guide(
         self,
         question_text: str,
@@ -309,7 +302,7 @@ Return only valid JSON (no markdown, no extra text)."""
 
         q = self._compact_block(question)
         scheme = self._compact_block(answer_scheme)
-        ans = self._compact_block(student_answer)
+        ans = self._compact_student_answer(student_answer)
 
         # Keep the prompt compact but structured for stable grading.
         prompt = (
@@ -324,46 +317,14 @@ Return only valid JSON (no markdown, no extra text)."""
             "Important:\n"
             "- Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.\n"
             "- Include 1–2 exact quotes copied from the student's answer as evidence.\n"
+            "- Each evidence quote MUST correspond to exactly ONE marking point (do not combine multiple points into one quote).\n"
             "- If there is no relevant evidence in the student's answer, return score 0.\n\n"
+            "Process requirement: decide the feedback first, then choose a score that matches the feedback.\n\n"
             "Return JSON only:\n"
-            f'{{"score": <whole number 0..{max_marks}>, "confidence": <0..1>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}'
+            f'{{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}'
         )
 
         return await self._call_ollama(prompt, system_prompt)
-    
-    async def batch_grade(
-        self,
-        questions: List[Dict[str, Any]],
-        student_answers: List[Dict[str, Any]]
-    ) -> List[LLMResponse]:
-        """
-        Grade multiple answers (calls grade_answer for each).
-        
-        Args:
-            questions: List of question dicts with question_text, answer_scheme, max_marks
-            student_answers: List of answer dicts with question_number, answer_text
-            
-        Returns:
-            List of LLMResponse objects
-        """
-        results = []
-        
-        # Create lookup for student answers
-        answers_by_num = {a["question_number"]: a["answer_text"] for a in student_answers}
-        
-        for q in questions:
-            q_num = q.get("question_number")
-            student_ans = answers_by_num.get(q_num, "")
-            
-            result = await self.grade_answer(
-                question=q.get("question_text", ""),
-                answer_scheme=q.get("answer_scheme", ""),
-                student_answer=student_ans,
-                max_marks=float(q.get("max_marks", 0))
-            )
-            results.append(result)
-        
-        return results
     
     async def check_health(self) -> bool:
         """Check if Ollama is running and model is available."""
