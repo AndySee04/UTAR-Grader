@@ -220,6 +220,7 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
             result = await llm_service.grade_answer(
                 question=guide.question_text or "",
                 answer_scheme=guide.answer_scheme or "",
+                keypoint_marks=guide.keypoint_marks or "",
                 student_answer=student_answer_text,
                 max_marks=float(guide.max_marks or 0)
             )

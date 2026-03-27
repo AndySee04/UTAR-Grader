@@ -20,7 +20,7 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 - **Frontend**: React + Vite + TailwindCSS
 - **Database**: SQLite (development) / PostgreSQL (production)
 - **OCR**: TrOCR (microsoft/trocr-base-printed for question papers, microsoft/trocr-base-handwritten for student answers)
-- **LLM**: Ollama + Llama 3 / Mistral
+- **LLM**: Ollama + Llama 3.2
 - **GPU**: NVIDIA RTX 4060 recommended
 
 ## Workflow
@@ -76,10 +76,15 @@ Frontend runs at `http://localhost:5173`.
 ```bash
 ollama serve
 
+# default/high-accuracy model used by backend config
+ollama pull llama3.2:11b
+
+# optional lighter/faster fallback
 ollama pull llama3:8b
 ```
 
 Ollama is required for grading (and any other LLM features you enable).
+Model can be changed via `OLLAMA_MODEL` env var.
 
 ## Debugging (optional)
 
@@ -140,7 +145,7 @@ Create a `.env` file in the project root:
 SECRET_KEY=your-secret-key-here
 DATABASE_URL=sqlite:///./backend/auto_grade.db
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3:8b
+OLLAMA_MODEL=llama3.2:11b
 ```
 
 ## Development Progress

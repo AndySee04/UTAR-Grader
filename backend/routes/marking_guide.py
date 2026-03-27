@@ -124,6 +124,7 @@ async def generate_marking_guide(
                     question_text=q.get("question_text"),
                     question_type=q.get("question_type"),
                     answer_scheme=q.get("answer_scheme"),
+                    keypoint_marks=q.get("keypoint_marks"),
                     max_marks=float(q.get("max_marks", 0)) if q.get("max_marks") else None
                 )
                 db.add(guide)
@@ -192,6 +193,7 @@ async def add_question(
         question_text=question.question_text,
         question_type=question.question_type,
         answer_scheme=question.answer_scheme,
+        keypoint_marks=question.keypoint_marks,
         max_marks=question.max_marks,
         is_modified=True
     )
@@ -245,6 +247,8 @@ async def update_question(
         guide.question_type = update.question_type
     if update.answer_scheme is not None:
         guide.answer_scheme = update.answer_scheme
+    if update.keypoint_marks is not None:
+        guide.keypoint_marks = update.keypoint_marks
     if update.max_marks is not None:
         guide.max_marks = update.max_marks
     

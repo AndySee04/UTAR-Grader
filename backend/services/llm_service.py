@@ -88,6 +88,27 @@ class LLMService:
                 lines.append(line)
         # Keep at most a reasonable number of lines to avoid prompt bloat.
         return "\n".join(lines[:30])
+
+    def _annotate_scheme_with_keypoint_marks(self, scheme: str, keypoint_marks: str) -> str:
+        """Append `| <marks>` to each keypoint line for explicit scoring cues."""
+        s = self._compact_block(scheme)
+        mark = (keypoint_marks or "").strip() or "1"
+        if not s:
+            return ""
+
+        annotated = []
+        for raw_line in s.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if "|" in line:
+                annotated.append(line)
+                continue
+            if line.startswith(("-", "*")) or re.match(r"^\d+[\).\s]", line):
+                annotated.append(f"{line} | {mark}")
+            else:
+                annotated.append(f"- {line} | {mark}")
+        return "\n".join(annotated)
     
     async def _call_ollama(self, prompt: str, system_prompt: Optional[str] = None) -> LLMResponse:
         """
@@ -269,6 +290,7 @@ Return JSON array:
         self,
         question: str,
         answer_scheme: str,
+        keypoint_marks: str,
         student_answer: str,
         max_marks: float
     ) -> LLMResponse:
@@ -278,50 +300,52 @@ Return JSON array:
         Args:
             question: The question text
             answer_scheme: Expected answer or marking criteria
+            keypoint_marks: Per-keypoint mark allocation guidance
             student_answer: Student's answer
             max_marks: Maximum marks for this question
             
         Returns:
             LLMResponse with grading result JSON
         """
-        system_prompt = """You are a strict but fair exam grader.
+        system_prompt = """You are a strict exam grader.
 
-Grading rules:
-- Grade ONLY on meaning and required key points from the marking scheme.
-- DO NOT deduct marks for spelling, grammar, punctuation, capitalization, or minor missing symbols if the intended meaning/key point is clear.
-- Treat common misspellings as correct (e.g., "verity" should count as "verify").
-- DO NOT mention spelling/grammar mistakes in feedback.
-- You MUST NOT invent content that is not in the student's answer.
+Rules:
+- Grade based only on the marking scheme.
+- Ignore spelling/grammar if meaning is clear.
+- Ignore punctuation/spacing/line breaks if meaning is clear.
+- Ignore incorrectsymbol/formating if meaning is clear.
+- Do not infer or add missing points.
 
-Scoring rules:
-- The score must be a whole number (no decimals).
-- Follow the marking score stated in the answer scheme.
-- Score must be within [0, max_marks].
+Scoring:
+- Each correct keypoint uses the provided marks per keypoint.
+- Total score must be an integer within [0, max_marks].
 
-Return only valid JSON (no markdown, no extra text)."""
+Output:
+Return valid JSON only:
+{"score": int, "feedback": string, "evidence_quotes": string[]}"""
 
         q = self._compact_block(question)
         scheme = self._compact_block(answer_scheme)
+        keypoints = self._compact_block(keypoint_marks)
         ans = self._compact_student_answer(student_answer)
+        scheme_with_marks = self._annotate_scheme_with_keypoint_marks(scheme, keypoints)
 
-        # Keep the prompt compact but structured for stable grading.
         prompt = (
-            "Grade this exam answer.\n"
-            f"Max marks: {max_marks}\n\n"
             "Question:\n"
             f"{q}\n\n"
-            "Marking scheme:\n"
-            f"{scheme}\n\n"
+            "Answer guide:\n"
+            f"- max_marks: {max_marks}\n"
+            f"- marks_per_keypoint: {keypoints or '1'}\n"
+            f"- marking_scheme:\n{scheme_with_marks or scheme}\n\n"
             "Student answer:\n"
             f"{ans}\n\n"
-            "Important:\n"
-            "- Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.\n"
-            "- Include 1–2 exact quotes copied from the student's answer as evidence.\n"
-            "- Each evidence quote MUST correspond to exactly ONE marking point (do not combine multiple points into one quote).\n"
-            "- If there is no relevant evidence in the student's answer, return score 0.\n\n"
-            "Process requirement: decide the feedback first, then choose a score that matches the feedback.\n\n"
-            "Return JSON only:\n"
-            f'{{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}'
+            "Instructions:\n"
+            "- Ignore grammar/spelling/punctuation issues.\n"
+            "- Match student answers to marking scheme by meaning.\n"
+            "- Each quote must support one keypoint.\n"
+            "- Return score as an integer within [0, max_marks].\n\n"
+            "Return JSON only.\n"
+            '{"score": int, "feedback": string, "evidence_quotes": string[]}'
         )
 
         return await self._call_ollama(prompt, system_prompt)

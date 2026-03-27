@@ -38,3 +38,9 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE marking_guide ADD COLUMN keypoint_marks TEXT"))
+                conn.commit()
+        except Exception:
+            pass

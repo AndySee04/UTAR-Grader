@@ -8,6 +8,7 @@ class MarkingGuideCreate(BaseModel):
     question_text: Optional[str] = None
     question_type: Optional[str] = Field(None, pattern="^(short_answer|essay|mcq|calculation)$")
     answer_scheme: Optional[str] = None
+    keypoint_marks: Optional[str] = None
     max_marks: Optional[float] = Field(None, ge=0)
 
 
@@ -16,6 +17,7 @@ class MarkingGuideUpdate(BaseModel):
     question_text: Optional[str] = None
     question_type: Optional[str] = Field(None, pattern="^(short_answer|essay|mcq|calculation)$")
     answer_scheme: Optional[str] = None
+    keypoint_marks: Optional[str] = None
     max_marks: Optional[float] = Field(None, ge=0)
 
 
@@ -26,6 +28,7 @@ class MarkingGuideResponse(BaseModel):
     question_text: Optional[str]
     question_type: Optional[str]
     answer_scheme: Optional[str]
+    keypoint_marks: Optional[str]
     max_marks: Optional[float]
     is_modified: bool
     created_at: datetime

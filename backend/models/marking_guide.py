@@ -15,6 +15,7 @@ class MarkingGuide(Base):
     question_text = Column(Text, nullable=True)
     question_type = Column(String(50), nullable=True)  # short_answer, essay, mcq, calculation
     answer_scheme = Column(Text, nullable=True)
+    keypoint_marks = Column(Text, nullable=True)
     max_marks = Column(Numeric(5, 2), nullable=True)
     is_modified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

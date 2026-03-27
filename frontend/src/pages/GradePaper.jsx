@@ -55,7 +55,9 @@ function GradePaper() {
   // Region count per document (synced with backend); cropped = count > 0
   const [regionCountByDocId, setRegionCountByDocId] = useState({})
   const [answerGuideDrafts, setAnswerGuideDrafts] = useState({})
+  const [keypointDrafts, setKeypointDrafts] = useState({})
   const [savingAnswerGuideId, setSavingAnswerGuideId] = useState(null)
+  const keypointSaveTimersRef = useRef({})
 
   const croppedDocs = useMemo(
     () => new Set(Object.entries(regionCountByDocId).filter(([, c]) => c > 0).map(([id]) => id)),
@@ -292,16 +294,12 @@ function GradePaper() {
         setMarkingGuide(guide)
 
         // Decide which step to show when reopening:
-        // - If there is an existing marking guide and this is a regrade, go to "Review Marking Guide".
-        // - If there is an existing marking guide (normal open), go to "Grade" results step.
+        // - If there is an existing marking guide, always return to "Review Marking Guide".
+        //   (step=3 has no dedicated page in this component and can appear blank)
         // - Else if question + students exist, go to "Process".
         // - Otherwise stay on "Upload".
         if (Array.isArray(guide) && guide.length > 0) {
-          if (isRegrade) {
-            setStep(2)
-          } else {
-            setStep(3)
-          }
+          setStep(2)
         } else if (question && students.length > 0) {
           setStep(1)
         } else {
@@ -325,6 +323,7 @@ function GradePaper() {
   useEffect(() => {
     if (!Array.isArray(markingGuide) || markingGuide.length === 0) {
       setAnswerGuideDrafts({})
+      setKeypointDrafts({})
       return
     }
     setAnswerGuideDrafts((prev) => {
@@ -336,7 +335,25 @@ function GradePaper() {
       })
       return next
     })
+    setKeypointDrafts((prev) => {
+      const next = { ...prev }
+      markingGuide.forEach((q) => {
+        if (next[q.id] == null) {
+          next[q.id] = q.keypoint_marks || ''
+        }
+      })
+      return next
+    })
   }, [markingGuide])
+
+  useEffect(() => {
+    return () => {
+      Object.values(keypointSaveTimersRef.current).forEach((timerId) => {
+        clearTimeout(timerId)
+      })
+      keypointSaveTimersRef.current = {}
+    }
+  }, [])
 
   // Sync region counts from backend (question paper + student docs) for step 1
   useEffect(() => {
@@ -650,6 +667,7 @@ function GradePaper() {
           question_number,
           question_text,
           question_type: 'short_answer',
+          keypoint_marks: '',
           max_marks
         }
 
@@ -858,7 +876,8 @@ function GradePaper() {
       const res = await markingGuideAPI.generate(examId)
       setMarkingGuide(res.data.marking_guide || [])
       toast.success('Marking guide generated!')
-      setStep(3)
+      // Keep user on Marking Guide review after generation.
+      setStep(2)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to generate marking guide')
       toast.error('Failed to generate marking guide')
@@ -888,7 +907,8 @@ function GradePaper() {
         question_text: '',
         question_type: 'short_answer',
         max_marks: 1,
-        answer_scheme: ''
+        answer_scheme: '',
+        keypoint_marks: ''
       })
       setMarkingGuide([...markingGuide, res.data])
       toast.info('Question added')
@@ -906,6 +926,31 @@ function GradePaper() {
     } catch (err) {
       toast.error('Failed to delete question')
     }
+  }
+
+  const persistKeypointMarks = async (guideId, draftValue) => {
+    const normalized = draftValue == null ? '' : String(draftValue).trim()
+    const current = markingGuide.find((g) => g.id === guideId)
+    if (!current) return
+    if ((current.keypoint_marks || '') === normalized) return
+
+    try {
+      const res = await markingGuideAPI.updateQuestion(guideId, {
+        keypoint_marks: normalized
+      })
+      setMarkingGuide((prev) => prev.map((g) => (g.id === guideId ? res.data : g)))
+      setKeypointDrafts((prev) => ({ ...prev, [guideId]: res.data.keypoint_marks || '' }))
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to save keypoint marks')
+    }
+  }
+
+  const queueKeypointAutoSave = (guideId, value) => {
+    const existing = keypointSaveTimersRef.current[guideId]
+    if (existing) clearTimeout(existing)
+    keypointSaveTimersRef.current[guideId] = setTimeout(() => {
+      persistKeypointMarks(guideId, value)
+    }, 500)
   }
 
   // Step 4: Start Grading
@@ -1402,59 +1447,99 @@ function GradePaper() {
                         </button>
                       </td>
                     </tr>
-                    <tr className="bg-gray-50/60">
+                    <tr className="bg-gray-50/40">
                       <td className="px-4 pt-1 pb-2 text-left align-top text-[11px] font-medium text-gray-500">
                         Answer guide
                       </td>
                       <td className="px-4 py-2 align-top" colSpan={4}>
-                        <div className="relative group">
-                          <textarea
-                            value={answerGuideDrafts[q.id] ?? q.answer_scheme ?? ''}
-                            onChange={(e) =>
-                              setAnswerGuideDrafts((prev) => ({
-                                ...prev,
-                                [q.id]: e.target.value
-                              }))
-                            }
-                            rows={6}
-                            className="w-full min-h-[120px] px-3 py-2 pr-16 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500 resize-y bg-white"
-                            placeholder="Describe the ideal/correct answer, key points, marking notes..."
-                          />
-                          {savingAnswerGuideId === q.id ? (
-                            <span className="absolute bottom-2 right-3 text-[11px] text-gray-400 select-none">
-                              Saving...
-                            </span>
-                          ) : (answerGuideDrafts[q.id] ?? q.answer_scheme ?? '') !== (q.answer_scheme ?? '') ? (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const draft = answerGuideDrafts[q.id] ?? ''
-                                setSavingAnswerGuideId(q.id)
-                                try {
-                                  const res = await markingGuideAPI.updateQuestion(q.id, {
-                                    answer_scheme: draft
-                                  })
-                                  setMarkingGuide((prev) =>
-                                    prev.map((g) => (g.id === q.id ? res.data : g))
-                                  )
-                                  setAnswerGuideDrafts((prev) => ({
-                                    ...prev,
-                                    [q.id]: res.data.answer_scheme || ''
-                                  }))
-                                  toast.success('Answer guide saved')
-                                } catch (err) {
-                                  toast.error(
-                                    err?.response?.data?.detail || 'Failed to save answer guide'
-                                  )
-                                } finally {
-                                  setSavingAnswerGuideId(null)
-                                }
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                          <div
+                            className={`lg:col-span-9 bg-white border rounded-xl p-3 transition-colors ${
+                              (answerGuideDrafts[q.id] ?? q.answer_scheme ?? '') !== (q.answer_scheme ?? '')
+                                ? 'border-amber-400 bg-amber-50/30'
+                                : 'border-gray-200'
+                            }`}
+                          >
+                            <textarea
+                              value={answerGuideDrafts[q.id] ?? q.answer_scheme ?? ''}
+                              onChange={(e) =>
+                                setAnswerGuideDrafts((prev) => ({
+                                  ...prev,
+                                  [q.id]: e.target.value
+                                }))
+                              }
+                              rows={6}
+                              className={`w-full min-h-[132px] px-3 py-2 border rounded-lg text-sm leading-6 resize-y bg-white focus:ring-indigo-500 ${
+                                (answerGuideDrafts[q.id] ?? q.answer_scheme ?? '') !== (q.answer_scheme ?? '')
+                                  ? 'border-amber-300 focus:border-amber-400'
+                                  : 'border-gray-200 focus:border-indigo-500'
+                              }`}
+                              placeholder="Describe the ideal/correct answer, key points, marking notes..."
+                            />
+                            <div className="mt-2 h-6 flex items-center justify-end">
+                              {savingAnswerGuideId === q.id ? (
+                                <span className="text-[11px] text-gray-400 select-none">Saving...</span>
+                              ) : (answerGuideDrafts[q.id] ?? q.answer_scheme ?? '') !== (q.answer_scheme ?? '') ? (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const draft = answerGuideDrafts[q.id] ?? ''
+                                    setSavingAnswerGuideId(q.id)
+                                    try {
+                                      const res = await markingGuideAPI.updateQuestion(q.id, {
+                                        answer_scheme: draft
+                                      })
+                                      setMarkingGuide((prev) =>
+                                        prev.map((g) => (g.id === q.id ? res.data : g))
+                                      )
+                                      setAnswerGuideDrafts((prev) => ({
+                                        ...prev,
+                                        [q.id]: res.data.answer_scheme || ''
+                                      }))
+                                      toast.success('Answer guide saved')
+                                    } catch (err) {
+                                      toast.error(
+                                        err?.response?.data?.detail || 'Failed to save answer guide'
+                                      )
+                                    } finally {
+                                      setSavingAnswerGuideId(null)
+                                    }
+                                  }}
+                                  className="px-3 py-1 text-[11px] font-medium rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors"
+                                >
+                                  Save Answer Guide
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="lg:col-span-3 bg-gradient-to-b from-indigo-50/60 to-white border border-indigo-100 rounded-xl p-2.5">
+                            <label className="block text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1.5">
+                              Keypoint marks
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.5"
+                              value={keypointDrafts[q.id] ?? q.keypoint_marks ?? ''}
+                              onChange={(e) => {
+                                const nextValue = e.target.value
+                                setKeypointDrafts((prev) => ({
+                                  ...prev,
+                                  [q.id]: nextValue
+                                }))
+                                queueKeypointAutoSave(q.id, nextValue)
                               }}
-                              className="absolute bottom-2 right-2 px-2.5 py-1 text-[11px] font-medium rounded-md border border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
-                            >
-                              Save
-                            </button>
-                          ) : null}
+                              onBlur={(e) => {
+                                const nextValue = e.target.value
+                                queueKeypointAutoSave(q.id, nextValue)
+                              }}
+                              className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-sm font-semibold text-gray-800 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                              placeholder="e.g. 1"
+                            />
+                            <p className="mt-1.5 text-[11px] text-gray-600">
+                              Marks per correct keypoint
+                            </p>
+                          </div>
                         </div>
                       </td>
                     </tr>
