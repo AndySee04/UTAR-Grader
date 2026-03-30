@@ -19,9 +19,14 @@ router = APIRouter()
 
 
 def _user_response_payload(user: User):
-    profile_picture_url = (
-        f"/api/account/profile-picture/{user.id}"
+    picture_version = (
+        Path(user.profile_picture_path).name
         if user.profile_picture_path
+        else None
+    )
+    profile_picture_url = (
+        f"/api/account/profile-picture/{user.id}?v={picture_version}"
+        if picture_version
         else None
     )
     return {

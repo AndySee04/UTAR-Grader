@@ -1,8 +1,40 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Cropper from 'react-easy-crop'
+import 'react-easy-crop/react-easy-crop.css'
 import { useAuth } from '../context/AuthContext'
 import { accountAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
+
+async function getCroppedImageBlob(imageSrc, croppedAreaPixels, fileType = 'image/jpeg') {
+  const image = await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.addEventListener('load', () => resolve(img))
+    img.addEventListener('error', reject)
+    img.src = imageSrc
+  })
+
+  const canvas = document.createElement('canvas')
+  canvas.width = croppedAreaPixels.width
+  canvas.height = croppedAreaPixels.height
+  const ctx = canvas.getContext('2d')
+
+  ctx.drawImage(
+    image,
+    croppedAreaPixels.x,
+    croppedAreaPixels.y,
+    croppedAreaPixels.width,
+    croppedAreaPixels.height,
+    0,
+    0,
+    croppedAreaPixels.width,
+    croppedAreaPixels.height
+  )
+
+  return await new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), fileType, 0.95)
+  })
+}
 
 function ManageAccount() {
   const { user, logout, checkAuth } = useAuth()
@@ -16,6 +48,12 @@ function ManageAccount() {
   const [loading, setLoading] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false)
+  const [cropModalOpen, setCropModalOpen] = useState(false)
+  const [selectedImageSrc, setSelectedImageSrc] = useState(null)
+  const [selectedImageType, setSelectedImageType] = useState('image/jpeg')
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
   const photoInputRef = useRef(null)
   const photoMenuRef = useRef(null)
   const hasNameChanged = name !== (user?.name || '')
@@ -94,17 +132,14 @@ function ManageAccount() {
       return
     }
 
-    setUploadingPhoto(true)
-    try {
-      await accountAPI.uploadProfilePicture(file)
-      await checkAuth()
-      toast.success('Profile picture updated')
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to upload profile picture')
-    } finally {
-      setUploadingPhoto(false)
-      e.target.value = ''
-    }
+    const imageSrc = URL.createObjectURL(file)
+    setSelectedImageSrc(imageSrc)
+    setSelectedImageType(file.type || 'image/jpeg')
+    setCrop({ x: 0, y: 0 })
+    setZoom(1)
+    setCroppedAreaPixels(null)
+    setCropModalOpen(true)
+    e.target.value = ''
   }
 
   const handleRemovePhoto = async () => {
@@ -118,6 +153,30 @@ function ManageAccount() {
     }
   }
 
+  const handleCropCancel = () => {
+    if (selectedImageSrc) URL.revokeObjectURL(selectedImageSrc)
+    setSelectedImageSrc(null)
+    setCropModalOpen(false)
+  }
+
+  const handleCropSave = async () => {
+    if (!selectedImageSrc || !croppedAreaPixels) return
+    setUploadingPhoto(true)
+    try {
+      const blob = await getCroppedImageBlob(selectedImageSrc, croppedAreaPixels, selectedImageType)
+      if (!blob) throw new Error('Failed to prepare cropped image')
+      const file = new File([blob], `profile-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' })
+      await accountAPI.uploadProfilePicture(file)
+      await checkAuth()
+      toast.success('Profile picture updated')
+      handleCropCancel()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || 'Failed to upload profile picture')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
   useEffect(() => {
     const onDocClick = (event) => {
       if (!photoMenuRef.current) return
@@ -128,6 +187,12 @@ function ManageAccount() {
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (selectedImageSrc) URL.revokeObjectURL(selectedImageSrc)
+    }
+  }, [selectedImageSrc])
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -242,6 +307,60 @@ function ManageAccount() {
           </button>
         </form>
       </div>
+
+      {cropModalOpen && selectedImageSrc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-4">
+            <h3 className="text-base font-semibold text-gray-900">Crop Profile Photo</h3>
+            <p className="text-xs text-gray-500 mt-1">Adjust zoom and position your photo.</p>
+
+            <div className="relative mt-4 h-72 w-full rounded-xl overflow-hidden bg-gray-900">
+              <Cropper
+                image={selectedImageSrc}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                showGrid={false}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+              />
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-xs font-medium text-gray-600 mb-2">Zoom</label>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.01}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="w-full accent-indigo-600"
+              />
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCropCancel}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCropSave}
+                disabled={uploadingPhoto}
+                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {uploadingPhoto ? 'Saving...' : 'Save Photo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Password Section */}
       <div className="card p-6">
