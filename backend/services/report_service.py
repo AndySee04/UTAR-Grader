@@ -131,6 +131,15 @@ class ReportService:
             spaceAfter=20,
             alignment=1  # Center
         )
+
+        feedback_style = ParagraphStyle(
+            "Feedback",
+            parent=styles["Normal"],
+            fontSize=8,
+            leading=10,
+            alignment=0,  # left
+            wordWrap="CJK",
+        )
         
         elements = []
         
@@ -153,7 +162,7 @@ class ReportService:
                 grade.get("question_number", ""),
                 f"{grade.get('score', 0):.1f}",
                 f"{grade.get('max_marks', 0):.1f}",
-                grade.get("feedback", "")[:100]  # Truncate long feedback
+                Paragraph(grade.get("feedback", ""), feedback_style)
             ])
         
         table = Table(table_data, colWidths=[1*inch, 0.8*inch, 0.8*inch, 4*inch])
@@ -168,7 +177,7 @@ class ReportService:
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#E8E8E8')),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('FONTSIZE', (0, 1), (2, -1), 9),  # feedback uses Paragraph style
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))

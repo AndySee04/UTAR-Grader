@@ -292,16 +292,12 @@ function GradePaper() {
         setMarkingGuide(guide)
 
         // Decide which step to show when reopening:
-        // - If there is an existing marking guide and this is a regrade, go to "Review Marking Guide".
-        // - If there is an existing marking guide (normal open), go to "Grade" results step.
+        // - If there is an existing marking guide, always go to "Review Marking Guide" (step 2).
+        //   This avoids landing on an unrendered step that appears as a blank screen.
         // - Else if question + students exist, go to "Process".
         // - Otherwise stay on "Upload".
         if (Array.isArray(guide) && guide.length > 0) {
-          if (isRegrade) {
-            setStep(2)
-          } else {
-            setStep(3)
-          }
+          setStep(2)
         } else if (question && students.length > 0) {
           setStep(1)
         } else {
@@ -858,7 +854,7 @@ function GradePaper() {
       const res = await markingGuideAPI.generate(examId)
       setMarkingGuide(res.data.marking_guide || [])
       toast.success('Marking guide generated!')
-      setStep(3)
+      setStep(2)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to generate marking guide')
       toast.error('Failed to generate marking guide')

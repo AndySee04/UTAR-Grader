@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, BackgroundTasks
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -260,9 +260,10 @@ async def update_region_text(
 async def process_exam_documents(
     exam_id: str,
     current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db)
 ):
-    """Process all documents for an exam (detect regions + OCR). Starts a separate worker process and returns immediately."""
+    """Process all documents for an exam (detect regions + OCR). Returns immediately."""
     exam = db.query(Exam).filter(
         Exam.id == exam_id,
         Exam.user_id == current_user.id
@@ -275,17 +276,22 @@ async def process_exam_documents(
     exam.status = "processing"
     db.commit()
     
-    # Spawn worker in a separate process (do not pass db; worker creates its own session)
-    backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    # Inherit stdout/stderr so worker progress is visible in the same terminal as the API
-    subprocess.Popen(
-        [sys.executable, "-m", "scripts.process_exam_worker", exam_id],
-        cwd=backend_root,
-        env=os.environ.copy(),
-        stdout=None,
-        stderr=None,
-    )
-    
+    # Run in background so the API returns immediately.
+    # We create a new DB session inside the background task.
+    def _run_in_bg(exam_id_local: str):
+        from database import SessionLocal
+        bg_db = SessionLocal()
+        try:
+            process_exam_background(exam_id_local, bg_db)
+        finally:
+            bg_db.close()
+
+    if background_tasks is not None:
+        background_tasks.add_task(_run_in_bg, exam_id)
+    else:
+        # Fallback (should not happen): run synchronously
+        _run_in_bg(exam_id)
+
     return {"message": "Processing started", "exam_id": exam_id, "status": "processing"}
 
 

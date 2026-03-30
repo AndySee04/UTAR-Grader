@@ -115,8 +115,6 @@ Auto Exam Grading Website/
 │   ├── routes/                 # API endpoints
 │   ├── services/               # Business logic (OCR, LLM, etc.)
 │   ├── schemas/                # Pydantic schemas
-│   ├── scripts/
-│   │   └── process_exam_worker.py   # Legacy background processing (not used in current region-based flow)
 │   └── utils/                  # Utilities
 ├── frontend/
 │   ├── src/
