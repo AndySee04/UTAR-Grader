@@ -48,6 +48,8 @@ function ManageAccount() {
   const [loading, setLoading] = useState(false)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const [cropModalOpen, setCropModalOpen] = useState(false)
   const [selectedImageSrc, setSelectedImageSrc] = useState(null)
   const [selectedImageType, setSelectedImageType] = useState('image/jpeg')
@@ -105,16 +107,16 @@ function ManageAccount() {
   }
 
   const handleDeleteAccount = async () => {
-    if (!confirm('Are you sure you want to delete your account? This action cannot be undone. All your exams and data will be permanently deleted.')) {
-      return
-    }
-
+    setDeletingAccount(true)
     try {
       await accountAPI.delete()
       logout()
       navigate('/login')
     } catch (err) {
       toast.error('Failed to delete account')
+    } finally {
+      setDeletingAccount(false)
+      setDeleteModalOpen(false)
     }
   }
 
@@ -440,7 +442,7 @@ function ManageAccount() {
           Once you delete your account, there is no going back. All your exams, grades, and data will be permanently deleted.
         </p>
         <button
-          onClick={handleDeleteAccount}
+          onClick={() => setDeleteModalOpen(true)}
           className="btn-danger flex items-center gap-2"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -449,6 +451,36 @@ function ManageAccount() {
           Delete Account
         </button>
       </div>
+
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/55 backdrop-blur-[1px] p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100">
+            <div className="p-5">
+              <h3 className="text-lg font-semibold text-gray-900">Delete Account?</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Are you sure you want to delete your account? This action cannot be undone.
+                All your exams, grades, and uploaded files will be permanently deleted.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={deletingAccount}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingAccount ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
