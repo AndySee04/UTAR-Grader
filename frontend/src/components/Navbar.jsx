@@ -51,10 +51,14 @@ function Navbar() {
           {/* Logo + Nav */}
           <div className="flex items-center">
             <div className="flex items-center gap-2 mr-8">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                <span className="text-white text-sm font-bold">A</span>
-              </div>
-              <span className="text-lg font-bold gradient-text hidden sm:block">Auto-Grade</span>
+              <img
+                src="/logo/utar-grader-logo.png"
+                alt="UTAR Grader logo"
+                className="w-8 h-8 object-contain"
+              />
+              <span className="text-lg font-extrabold tracking-[0.12em] text-black hidden sm:block">
+                UTAR GRADER
+              </span>
             </div>
 
             {/* Desktop nav */}

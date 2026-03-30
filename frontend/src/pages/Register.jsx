@@ -46,10 +46,12 @@ function Register() {
       <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-4">
-            <span className="text-white text-2xl font-bold">A</span>
-          </div>
-          <h1 className="text-3xl font-bold text-white">Auto-Grade</h1>
+          <img
+            src="/logo/utar-grader-logo.png"
+            alt="UTAR Grader logo"
+            className="w-14 h-14 object-contain mb-4 drop-shadow-md"
+          />
+          <h1 className="text-3xl font-bold text-white">UTAR Grader</h1>
           <p className="mt-2 text-indigo-200/70 text-sm">AI-Powered Exam Grading</p>
         </div>
 
