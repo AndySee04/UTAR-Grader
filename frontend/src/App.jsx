@@ -36,7 +36,7 @@ function App() {
           <Dashboard />
         </ProtectedRoute>
       }>
-        <Route index element={<Navigate to="/grade" replace />} />
+        <Route index element={<Navigate to="/exams" replace />} />
         <Route path="grade" element={<GradePaper />} />
         <Route path="exams" element={<ExamList />} />
         <Route path="exams/:examId/results" element={<ExamResults />} />

@@ -1,23 +1,23 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useState } from 'react'
 
 const NAV_ITEMS = [
+  {
+    to: '/exams',
+    label: 'My Exams',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+      </svg>
+    )
+  },
   {
     to: '/grade',
     label: 'Grade Paper',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )
-  },
-  {
-    to: '/exams',
-    label: 'Exam List',
-    icon: (
-      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
       </svg>
     )
   },
@@ -35,7 +35,7 @@ const NAV_ITEMS = [
 function Navbar() {
   const { user, logout } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const location = useLocation()
+  const navigate = useNavigate()
 
   const linkClass = ({ isActive }) =>
     `flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
@@ -50,16 +50,22 @@ function Navbar() {
         <div className="flex justify-between h-16">
           {/* Logo + Nav */}
           <div className="flex items-center">
-            <div className="flex items-center gap-2 mr-8">
+            <button
+              type="button"
+              onClick={() => navigate('/exams')}
+              className="flex items-center gap-2 mr-8 select-none"
+              aria-label="Go to My Exams"
+            >
               <img
                 src="/logo/utar-grader-logo.png"
                 alt="UTAR Grader logo"
                 className="w-8 h-8 object-contain"
+                draggable="false"
               />
-              <span className="text-lg font-extrabold tracking-[0.12em] text-black hidden sm:block">
+              <span className="text-lg font-extrabold tracking-[0.12em] text-black hidden sm:block select-none">
                 UTAR GRADER
               </span>
-            </div>
+            </button>
 
             {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-1">

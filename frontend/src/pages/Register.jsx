@@ -51,7 +51,7 @@ function Register() {
             alt="UTAR Grader logo"
             className="w-14 h-14 object-contain mb-4 drop-shadow-md"
           />
-          <h1 className="text-3xl font-bold text-white">UTAR Grader</h1>
+          <h1 className="text-3xl font-extrabold tracking-[0.12em] text-white">UTAR GRADER</h1>
           <p className="mt-2 text-indigo-200/70 text-sm">AI-Powered Exam Grading</p>
         </div>
 
