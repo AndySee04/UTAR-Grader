@@ -4,11 +4,67 @@ import { examsAPI, documentsAPI, processingAPI, markingGuideAPI, gradingAPI } fr
 import { useToast } from '../context/ToastContext'
 
 const STEPS = [
-  { label: 'Upload', icon: '📤' },
-  { label: 'Process', icon: '⚙️' },
-  { label: 'Marking Guide', icon: '📋' },
-  { label: 'Grade', icon: '✅' }
+  { label: 'Upload', icon: 'upload' },
+  { label: 'Process', icon: 'settings' },
+  { label: 'Marking Guide', icon: 'clipboard-list' },
+  { label: 'Grade', icon: 'check' }
 ]
+
+function StepIcon({ name, className = 'w-5 h-5' }) {
+  const baseProps = {
+    className,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true
+  }
+
+  if (name === 'upload') {
+    return (
+      <svg {...baseProps}>
+        <path d="M12 3v12" />
+        <path d="M8 7l4 -4l4 4" />
+        <path d="M4 15v2a4 4 0 0 0 4 4h8a4 4 0 0 0 4 -4v-2" />
+      </svg>
+    )
+  }
+
+  if (name === 'settings') {
+    return (
+      <svg {...baseProps}>
+        <path d="M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0 -6" />
+        <path d="M12 3l0 2" />
+        <path d="M12 19l0 2" />
+        <path d="M3 12l2 0" />
+        <path d="M19 12l2 0" />
+        <path d="M5.6 5.6l1.4 1.4" />
+        <path d="M17 17l1.4 1.4" />
+        <path d="M17 7l1.4 -1.4" />
+        <path d="M5.6 18.4l1.4 -1.4" />
+      </svg>
+    )
+  }
+
+  if (name === 'clipboard-list') {
+    return (
+      <svg {...baseProps}>
+        <path d="M9 5h6a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z" />
+        <path d="M9 5a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2" />
+        <path d="M10 12h4" />
+        <path d="M10 16h4" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg {...baseProps}>
+      <path d="M5 12l5 5l10 -10" />
+    </svg>
+  )
+}
 
 function GradePaper() {
   const [step, setStep] = useState(0)
@@ -987,7 +1043,7 @@ function GradePaper() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                   ) : (
-                    <span>{s.icon}</span>
+                    <StepIcon name={s.icon} className="w-5 h-5" />
                   )}
                 </div>
                 <span className={`text-sm font-medium hidden sm:block ${
