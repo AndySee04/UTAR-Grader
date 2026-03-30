@@ -104,6 +104,7 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 - [x] OpenCV preprocessing (grayscale, threshold, denoise)
 - [x] Text region detection (contours) and manual region drawing
 - [x] TrOCR integration for **per‑region** text extraction
+- [x] CRAFT-based **text line detection** for cropped student answers, then TrOCR **line-by-line**
 - [x] Store extracted text and marks per region in `extracted_text` table
 - [x] Frontend: Processing step with crop status and progress per student
 - [x] Frontend: Question paper and student answer crop tools (current UI)
@@ -128,6 +129,9 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 - [x] Add/delete questions endpoints
 - [x] Frontend: Editable marking guide table (question text, marks, type, answer guide)
 - [x] Frontend: Answer guide textarea per question (`marking_guide.answer_scheme`)
+- [x] Per-question **Keypoint marks** support (`marking_guide.keypoint_marks`)
+- [x] Keypoint marks auto-save (no manual save button)
+- [x] Visual indicator for unsaved Answer Guide edits
 
 ### Files Created:
 
@@ -141,6 +145,8 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 
 - [x] LLM grading service that compares **cropped student answer text** with answer guide per question
 - [x] Parse LLM responses into whole‑number scores, ignoring feedback text
+- [x] Deterministic keypoint scoring using structured marking points and per-keypoint marks
+- [x] Removed evidence-quote output/validation; grading relies on score + feedback only
 - [x] Store grades with links to `student_answers` and `llm_responses`
 - [x] Calculate totals per student and persist in `grading_summary`
 - [x] Allow manual teacher override for each per‑question score and reflect it immediately in the UI
