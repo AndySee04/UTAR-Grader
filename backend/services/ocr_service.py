@@ -103,8 +103,11 @@ class OCRService:
             text = self.extract_text_from_line(image)
             return text, [{"text": text, "region": None}]
         
-        # Detect text lines
-        lines = cv_service.detect_text_lines(image)
+        # Detect text lines.
+        # Use CRAFT (via EasyOCR) first for handwritten OCR, since line segmentation matters most there.
+        model_name_lower = (self.model_name or "").lower()
+        method = "craft" if "handwritten" in model_name_lower else "opencv"
+        lines = cv_service.detect_text_lines(image, method=method)
         
         if not lines:
             # No lines detected, try processing whole image
