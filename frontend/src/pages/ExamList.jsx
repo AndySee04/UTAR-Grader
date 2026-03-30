@@ -7,6 +7,8 @@ function ExamList() {
   const [exams, setExams] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [sortBy, setSortBy] = useState('date_desc')
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const toast = useToast()
@@ -94,6 +96,27 @@ function ExamList() {
     return <span className={c.class}>{c.label}</span>
   }
 
+  const normalizedQuery = searchTerm.trim().toLowerCase()
+  const visibleExams = exams
+    .filter((exam) => {
+      if (!normalizedQuery) return true
+      const name = (exam.name || '').toLowerCase()
+      return name.includes(normalizedQuery)
+    })
+    .sort((a, b) => {
+      if (sortBy === 'name_asc') {
+        return (a.name || '').localeCompare(b.name || '')
+      }
+      if (sortBy === 'name_desc') {
+        return (b.name || '').localeCompare(a.name || '')
+      }
+      if (sortBy === 'date_asc') {
+        return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+      }
+      // default: date_desc
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    })
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -128,6 +151,32 @@ function ExamList() {
         </Link>
       </div>
 
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div className="flex-1">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by exam name..."
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div className="sm:w-64">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="date_desc">Sort: Newest first</option>
+              <option value="date_asc">Sort: Oldest first</option>
+              <option value="name_asc">Sort: Name A-Z</option>
+              <option value="name_desc">Sort: Name Z-A</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
           {error}
@@ -150,9 +199,14 @@ function ExamList() {
             Create First Exam
           </Link>
         </div>
+      ) : visibleExams.length === 0 ? (
+        <div className="card p-10 text-center">
+          <h3 className="text-base font-semibold text-gray-700 mb-1">No matching exams</h3>
+          <p className="text-sm text-gray-500">Try a different search term.</p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {exams.map((exam, index) => (
+          {visibleExams.map((exam, index) => (
             <div
               key={exam.id}
               role="button"
