@@ -4,6 +4,8 @@ from sqlalchemy import func
 from typing import List
 import sys
 import os
+import shutil
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,6 +21,7 @@ from models.llm_response import LLMResponse
 from models.grade import GradingSummary
 from schemas.exam import ExamCreate, ExamUpdate, ExamResponse, ExamListResponse, ExamDetailResponse
 from utils.auth import get_current_user
+from config import UPLOAD_DIR
 
 router = APIRouter()
 
@@ -163,6 +166,9 @@ async def delete_exam(
     
     # Explicitly remove all dependent rows to guarantee cleanup even if
     # ORM/DB cascades are incomplete for some relation paths.
+    doc_paths = [
+        d[0] for d in db.query(Document.file_path).filter(Document.exam_id == exam.id).all()
+    ]
     doc_ids = [
         d[0] for d in db.query(Document.id).filter(Document.exam_id == exam.id).all()
     ]
@@ -190,4 +196,23 @@ async def delete_exam(
     db.query(Document).filter(Document.exam_id == exam.id).delete(synchronize_session=False)
     db.delete(exam)
     db.commit()
+
+    # Remove uploaded files/folders from disk after DB commit.
+    for file_path in doc_paths:
+        if not file_path:
+            continue
+        try:
+            p = Path(file_path)
+            if p.exists() and p.is_file():
+                p.unlink()
+        except Exception:
+            pass
+
+    exam_upload_dir = Path(UPLOAD_DIR) / exam.id
+    if exam_upload_dir.exists():
+        try:
+            shutil.rmtree(exam_upload_dir, ignore_errors=True)
+        except Exception:
+            pass
+
     return None
