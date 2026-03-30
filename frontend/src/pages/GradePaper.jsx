@@ -669,6 +669,12 @@ function GradePaper() {
         existingGuide = []
       }
 
+      const existingGuideByQNum = new Map(
+        existingGuide
+          .map((q) => [String(q.question_number || '').trim(), q])
+          .filter(([qNum]) => qNum.length > 0)
+      )
+
       if (existingGuide.length > 0) {
         await Promise.all(
           existingGuide.map((q) =>
@@ -688,6 +694,7 @@ function GradePaper() {
         const question_text = (r.raw_text || r.processed_text || '').trim()
         const rawMarks = r.marks
         const max_marks = rawMarks ?? 0
+        const prevGuide = existingGuideByQNum.get(question_number)
 
         // Skip regions that have no meaningful content:
         // - no OCR text
@@ -702,7 +709,10 @@ function GradePaper() {
           question_number,
           question_text,
           question_type: 'short_answer',
-          max_marks
+          max_marks,
+          // Preserve teacher-authored guide data when question number matches.
+          answer_scheme: prevGuide?.answer_scheme || '',
+          keypoint_marks: prevGuide?.keypoint_marks || ''
         }
 
         try {
@@ -946,17 +956,6 @@ function GradePaper() {
       toast.info('Question added')
     } catch (err) {
       toast.error('Failed to add question')
-    }
-  }
-
-  const handleDeleteQuestion = async (index) => {
-    const guide = markingGuide[index]
-    try {
-      await markingGuideAPI.deleteQuestion(guide.id)
-      setMarkingGuide(markingGuide.filter((_, i) => i !== index))
-      toast.info('Question removed')
-    } catch (err) {
-      toast.error('Failed to delete question')
     }
   }
 
@@ -1380,6 +1379,13 @@ function GradePaper() {
               <h2 className="text-lg font-semibold text-gray-900">Review Marking Guide</h2>
               <p className="text-sm text-gray-500 mt-1">Edit questions, types, and marks as needed.</p>
             </div>
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="px-4 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/25 hover:bg-indigo-700 active:bg-indigo-800 active:scale-[0.99] transition-all duration-200"
+            >
+              Back to Process Documents
+            </button>
           </div>
 
           {markingGuide.length === 0 && (
@@ -1403,7 +1409,6 @@ function GradePaper() {
                   <th className="px-4 py-3 text-left">Question</th>
                   <th className="px-4 py-3 text-left">Type</th>
                   <th className="px-4 py-3 text-left">Marks</th>
-                  <th className="px-4 py-3 text-left w-12"></th>
                 </tr>
               </thead>
               <tbody>
@@ -1442,16 +1447,6 @@ function GradePaper() {
                           onChange={(e) => updateGuideQuestion(i, 'max_marks', parseFloat(e.target.value))}
                           className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
                         />
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleDeleteQuestion(i)}
-                          className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
                       </td>
                     </tr>
                     <tr className="bg-gray-50/60">
