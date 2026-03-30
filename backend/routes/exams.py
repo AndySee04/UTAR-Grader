@@ -11,6 +11,11 @@ from database import get_db
 from models.user import User
 from models.exam import Exam
 from models.document import Document
+from models.extracted_text import ExtractedText
+from models.marking_guide import MarkingGuide
+from models.student_answer import StudentAnswer
+from models.grade import Grade
+from models.llm_response import LLMResponse
 from models.grade import GradingSummary
 from schemas.exam import ExamCreate, ExamUpdate, ExamResponse, ExamListResponse, ExamDetailResponse
 from utils.auth import get_current_user
@@ -156,6 +161,33 @@ async def delete_exam(
             detail="Exam not found"
         )
     
+    # Explicitly remove all dependent rows to guarantee cleanup even if
+    # ORM/DB cascades are incomplete for some relation paths.
+    doc_ids = [
+        d[0] for d in db.query(Document.id).filter(Document.exam_id == exam.id).all()
+    ]
+    guide_ids = [
+        g[0] for g in db.query(MarkingGuide.id).filter(MarkingGuide.exam_id == exam.id).all()
+    ]
+
+    # Student answers linked by document and/or marking guide
+    sa_query = db.query(StudentAnswer).filter(
+        (StudentAnswer.document_id.in_(doc_ids)) | (StudentAnswer.marking_guide_id.in_(guide_ids))
+    ) if (doc_ids or guide_ids) else None
+    sa_ids = [sa.id for sa in sa_query.all()] if sa_query is not None else []
+
+    if sa_ids:
+        db.query(Grade).filter(Grade.student_answer_id.in_(sa_ids)).delete(synchronize_session=False)
+    db.query(GradingSummary).filter(GradingSummary.exam_id == exam.id).delete(synchronize_session=False)
+    db.query(LLMResponse).filter(LLMResponse.exam_id == exam.id).delete(synchronize_session=False)
+
+    if sa_ids:
+        db.query(StudentAnswer).filter(StudentAnswer.id.in_(sa_ids)).delete(synchronize_session=False)
+    if doc_ids:
+        db.query(ExtractedText).filter(ExtractedText.document_id.in_(doc_ids)).delete(synchronize_session=False)
+
+    db.query(MarkingGuide).filter(MarkingGuide.exam_id == exam.id).delete(synchronize_session=False)
+    db.query(Document).filter(Document.exam_id == exam.id).delete(synchronize_session=False)
     db.delete(exam)
     db.commit()
     return None
