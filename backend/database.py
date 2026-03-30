@@ -38,3 +38,9 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN profile_picture_path TEXT"))
+                conn.commit()
+        except Exception:
+            pass

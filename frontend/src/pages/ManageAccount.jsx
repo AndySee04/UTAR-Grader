@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { accountAPI } from '../services/api'
@@ -14,6 +14,11 @@ function ManageAccount() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false)
+  const photoInputRef = useRef(null)
+  const photoMenuRef = useRef(null)
+  const hasNameChanged = name !== (user?.name || '')
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault()
@@ -75,6 +80,55 @@ function ManageAccount() {
     }
   }
 
+  const handlePickPhoto = () => {
+    setPhotoMenuOpen(false)
+    photoInputRef.current?.click()
+  }
+
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file')
+      return
+    }
+
+    setUploadingPhoto(true)
+    try {
+      await accountAPI.uploadProfilePicture(file)
+      await checkAuth()
+      toast.success('Profile picture updated')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to upload profile picture')
+    } finally {
+      setUploadingPhoto(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleRemovePhoto = async () => {
+    setPhotoMenuOpen(false)
+    try {
+      await accountAPI.removeProfilePicture()
+      await checkAuth()
+      toast.success('Profile picture removed')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to remove profile picture')
+    }
+  }
+
+  useEffect(() => {
+    const onDocClick = (event) => {
+      if (!photoMenuRef.current) return
+      if (!photoMenuRef.current.contains(event.target)) {
+        setPhotoMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [])
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
@@ -85,16 +139,69 @@ function ManageAccount() {
       {/* Profile Section */}
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
-            <span className="text-white text-lg font-bold">
-              {(user?.name || user?.email || '?')[0].toUpperCase()}
-            </span>
+          <div className="relative" ref={photoMenuRef}>
+            <button
+              type="button"
+              onClick={() => setPhotoMenuOpen((open) => !open)}
+              className="w-16 h-16 rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center hover:ring-2 hover:ring-indigo-200 transition-all"
+              title="Profile picture options"
+            >
+              {user?.profile_picture_url ? (
+                <img
+                  src={user.profile_picture_url}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <svg
+                  className="w-10 h-10 text-gray-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M20 21a8 8 0 10-16 0"
+                  />
+                  <circle cx="12" cy="8" r="4" strokeWidth={1.8} />
+                </svg>
+              )}
+            </button>
+            {photoMenuOpen && (
+              <div className="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-20 w-52 rounded-xl border border-gray-200 bg-white shadow-lg p-1.5">
+                <button
+                  type="button"
+                  onClick={handlePickPhoto}
+                  disabled={uploadingPhoto}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Upload Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemovePhoto}
+                  disabled={!user?.profile_picture_url}
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  Remove Current Photo
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <h2 className="font-semibold text-gray-900">Profile Information</h2>
-            <p className="text-sm text-gray-500">Update your display name</p>
+            <p className="text-sm text-gray-500">Update your display name and profile picture</p>
           </div>
         </div>
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handlePhotoChange}
+          className="hidden"
+        />
         <form onSubmit={handleUpdateProfile} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
@@ -120,8 +227,8 @@ function ManageAccount() {
 
           <button
             type="submit"
-            disabled={loading}
-            className="btn-primary flex items-center gap-2"
+            disabled={loading || !hasNameChanged}
+            className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>

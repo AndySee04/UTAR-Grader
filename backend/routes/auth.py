@@ -76,7 +76,13 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current logged-in user information."""
-    return current_user
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "name": current_user.name,
+        "profile_picture_url": f"/api/account/profile-picture/{current_user.id}" if current_user.profile_picture_path else None,
+        "created_at": current_user.created_at,
+    }
 
 
 @router.post("/logout", response_model=MessageResponse)

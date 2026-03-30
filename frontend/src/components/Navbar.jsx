@@ -81,10 +81,19 @@ function Navbar() {
           {/* Right side */}
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 text-sm">
-              <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
-                <span className="text-indigo-600 text-xs font-semibold">
-                  {(user?.name || user?.email || '?')[0].toUpperCase()}
-                </span>
+              <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center overflow-hidden">
+                {user?.profile_picture_url ? (
+                  <img
+                    src={user.profile_picture_url}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20 21a8 8 0 10-16 0" />
+                    <circle cx="12" cy="8" r="4" strokeWidth={1.8} />
+                  </svg>
+                )}
               </div>
               <span className="text-gray-600 font-medium">{user?.name || user?.email}</span>
             </div>

@@ -129,6 +129,14 @@ export const reportsAPI = {
 export const accountAPI = {
   get: () => api.get("/account"),
   update: (data) => api.put("/account", data),
+  uploadProfilePicture: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post("/account/profile-picture", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  removeProfilePicture: () => api.delete("/account/profile-picture"),
   changePassword: (data) => api.put("/account/password", data),
   delete: () => api.delete("/account"),
 };
