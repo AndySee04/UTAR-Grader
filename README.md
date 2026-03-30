@@ -1,6 +1,6 @@
 # Auto-Grading Website
 
-An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for teachers.
+An automated exam paper grading system using OCR (CRAFT + TrOCR) and LLM (Ollama) for teachers.
 
 ## Features
 
@@ -8,7 +8,7 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 - **Region-based question paper cropping**: draw regions per question; each region is OCR‑ed and stored with its question number and marks
 - **Manual cropping of student answers**: draw regions per document, OCR runs on each cropped region; progress is saved so teachers can resume later
 - **Start Processing** builds the marking guide directly from cropped **question paper regions** (no separate answer‑scheme PDF needed)
-- Automatic text extraction using TrOCR (printed text for question papers, handwriting for student answers)
+- Automatic text extraction using CRAFT + TrOCR for cropped student answers (line detection first, then line-level recognition)
 - AI-powered marking guide generation from cropped question regions
 - Automated grading with LLM using per‑question cropped student answers and your answer guides
 - Teacher override for scores
@@ -19,7 +19,7 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
 - **Backend**: FastAPI (Python)
 - **Frontend**: React + Vite + TailwindCSS
 - **Database**: SQLite (development) / PostgreSQL (production)
-- **OCR**: TrOCR (microsoft/trocr-base-printed for question papers, microsoft/trocr-base-handwritten for student answers)
+- **OCR**: CRAFT (EasyOCR detector) + TrOCR (microsoft/trocr-base-printed for question papers, microsoft/trocr-base-handwritten for student answers)
 - **LLM**: Ollama + Llama 3 / Mistral
 - **GPU**: NVIDIA RTX 4060 recommended
 
@@ -29,6 +29,7 @@ An automated exam paper grading system using OCR (TrOCR) and LLM (Ollama) for te
    - Upload the **question paper** PDF and one or more **student answer** PDFs.
    - **Crop the question paper**: open the question paper, draw regions around each question; OCR runs per region and the extracted text (without trailing “x marks”) plus marks value are saved.
    - **Crop each student answer**: open each student document, draw regions over answer areas; OCR runs per region and the per‑question answer text is saved.
+   - For student answer regions, OCR uses **CRAFT text line detection** first, then applies **TrOCR per detected line**, then merges lines into final extracted text.
 - **Step 2 – Review Marking Guide**  
    - Click **Start Processing**. The app reads the cropped **question paper regions** (and their extracted text stored in `ExtractedText`) and automatically builds a marking guide: one entry per cropped region, including question number, question text, and marks.
    - In the **Marking Guide** step, review and edit question numbers, wording, marks, and write an **answer guide** for each question (stored in `marking_guide.answer_scheme`).
