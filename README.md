@@ -130,17 +130,6 @@ Auto Exam Grading Website/
 
 The SQLite database is created in `backend/auto_grade.db` by default.
 
-## Environment Variables (Optional)
-
-Create a `.env` file in the project root:
-
-```env
-SECRET_KEY=your-secret-key-here
-DATABASE_URL=sqlite:///./backend/auto_grade.db
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3:8b
-```
-
 ## Development Progress
 
 See [TASKS.md](./TASKS.md) for detailed implementation progress.
