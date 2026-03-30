@@ -7,6 +7,8 @@ function ExamList() {
   const [exams, setExams] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const toast = useToast()
   const navigate = useNavigate()
 
@@ -38,14 +40,16 @@ function ExamList() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this exam? This action cannot be undone.')) return
-
+    setDeleting(true)
     try {
       await examsAPI.delete(id)
       setExams(exams.filter(e => e.id !== id))
+      setDeleteTarget(null)
       toast.success('Exam deleted')
     } catch (err) {
       toast.error('Failed to delete exam')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -219,7 +223,7 @@ function ExamList() {
                     </span>
                   )}
                   <button
-                    onClick={() => handleDelete(exam.id)}
+                    onClick={() => setDeleteTarget({ id: exam.id, name: exam.name })}
                     className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -230,6 +234,37 @@ function ExamList() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/55 backdrop-blur-[1px] p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100">
+            <div className="p-5">
+              <h3 className="text-lg font-semibold text-gray-900">Delete Exam?</h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Are you sure you want to delete{' '}
+                <span className="font-medium text-gray-900">{deleteTarget.name}</span>?
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteTarget.id)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
