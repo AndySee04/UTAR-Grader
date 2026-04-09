@@ -2,14 +2,14 @@
 
 ## Project Overview
 
-A web application for teachers to automatically grade exam papers using OCR (TrOCR) and LLM (Ollama).
+A web application for teachers to automatically grade exam papers using OCR (CRAFT + TrOCR) and LLM (Ollama).
 
 ## Tech Stack
 
 - **Backend**: FastAPI (Python)
 - **Frontend**: React + TailwindCSS
 - **Database**: SQLite (dev) / PostgreSQL (prod)
-- **OCR**: TrOCR (microsoft/trocr-base-handwritten)
+- **OCR**: CRAFT (EasyOCR detector) + TrOCR
 - **LLM**: Ollama + Llama 3 / Mistral
 - **PDF Processing**: PyMuPDF
 - **Auth**: JWT + bcrypt
@@ -170,6 +170,8 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 - [x] Frontend: View results page (per exam)
 - [x] Frontend: Individual student grades view
 - [x] Frontend: Score override functionality
+- [x] Frontend: Custom delete exam modal (replaces browser confirm)
+- [x] Frontend: Exam search + sort controls
 
 ### Files Created:
 
@@ -185,6 +187,11 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 - [x] Change password endpoint
 - [x] Delete account endpoint
 - [x] Frontend: Account settings page
+- [x] Upload/remove profile picture endpoints and UI
+- [x] Profile picture crop modal before upload (zoom + reposition)
+- [x] Cache-busting profile picture URL updates (instant refresh)
+- [x] Custom delete-account modal (replaces browser confirm)
+- [x] Navbar account behavior: Account tab opens page, user box opens Settings/Logout menu
 
 ### Files Created:
 
@@ -215,6 +222,8 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 - [x] Form validation
 - [x] End-to-end testing with real exam papers
 - [x] Browser compatibility testing
+- [x] Delete exam now removes uploaded files/folders from disk (`uploads/<exam_id>`)
+- [x] CRAFT detector thresholds made configurable via environment variables
 
 ---
 
@@ -322,6 +331,8 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 | ------ | ----------------------- | --------------- |
 | GET    | `/api/account`          | Get profile     |
 | PUT    | `/api/account`          | Update profile  |
+| POST   | `/api/account/profile-picture` | Upload/replace profile picture |
+| DELETE | `/api/account/profile-picture` | Remove current profile picture |
 | PUT    | `/api/account/password` | Change password |
 | DELETE | `/api/account`          | Delete account  |
 
@@ -330,7 +341,7 @@ A web application for teachers to automatically grade exam papers using OCR (TrO
 ## Current Progress
 
 **Status**: Completed all phases! Frontend and backend are fully built and integrated.
-**Last Updated**: 2026-02-23
+**Last Updated**: 2026-03-31
 
 ### Next Steps:
 
