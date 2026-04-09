@@ -24,6 +24,14 @@ from services.llm_service import llm_service
 
 router = APIRouter()
 
+def _normalize_question_type(value: str | None) -> str | None:
+    if value is None:
+        return None
+    raw = value.strip().lower()
+    if raw in {"mcq", "structured", "open_ended"}:
+        return raw
+    return None
+
 
 @router.post("/exams/{exam_id}/generate-guide", response_model=GenerateGuideResponse)
 async def generate_marking_guide(
@@ -122,7 +130,7 @@ async def generate_marking_guide(
                     exam_id=exam_id,
                     question_number=str(q.get("question_number", "")),
                     question_text=q.get("question_text"),
-                    question_type=q.get("question_type"),
+                    question_type=_normalize_question_type(q.get("question_type")),
                     answer_scheme=q.get("answer_scheme"),
                     max_marks=float(q.get("max_marks", 0)) if q.get("max_marks") else None
                 )
@@ -190,7 +198,7 @@ async def add_question(
         exam_id=exam_id,
         question_number=question.question_number,
         question_text=question.question_text,
-        question_type=question.question_type,
+        question_type=_normalize_question_type(question.question_type),
         answer_scheme=question.answer_scheme,
         max_marks=question.max_marks,
         is_modified=True
@@ -242,7 +250,7 @@ async def update_question(
     if update.question_text is not None:
         guide.question_text = update.question_text
     if update.question_type is not None:
-        guide.question_type = update.question_type
+        guide.question_type = _normalize_question_type(update.question_type)
     if update.answer_scheme is not None:
         guide.answer_scheme = update.answer_scheme
     if update.max_marks is not None:

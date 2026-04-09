@@ -6,7 +6,7 @@ from typing import Optional, List
 class MarkingGuideCreate(BaseModel):
     question_number: str = Field(..., max_length=50)
     question_text: Optional[str] = None
-    question_type: Optional[str] = Field(None, pattern="^(short_answer|essay|mcq|calculation)$")
+    question_type: Optional[str] = Field(None, pattern="^(mcq|structured|open_ended)$")
     answer_scheme: Optional[str] = None
     max_marks: Optional[float] = Field(None, ge=0)
 
@@ -14,7 +14,7 @@ class MarkingGuideCreate(BaseModel):
 class MarkingGuideUpdate(BaseModel):
     question_number: Optional[str] = Field(None, max_length=50)
     question_text: Optional[str] = None
-    question_type: Optional[str] = Field(None, pattern="^(short_answer|essay|mcq|calculation)$")
+    question_type: Optional[str] = Field(None, pattern="^(mcq|structured|open_ended)$")
     answer_scheme: Optional[str] = None
     max_marks: Optional[float] = Field(None, ge=0)
 

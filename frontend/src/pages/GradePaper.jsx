@@ -67,6 +67,15 @@ function StepIcon({ name, className = 'w-5 h-5' }) {
 }
 
 function GradePaper() {
+  const normalizeQuestionType = (value) => {
+    const raw = String(value || '').trim().toLowerCase()
+    if (!raw) return 'structured'
+    if (raw === 'mcq' || raw === 'structured' || raw === 'open_ended') return raw
+    if (raw === 'short_answer' || raw === 'calculation') return 'structured'
+    if (raw === 'essay') return 'open_ended'
+    return 'structured'
+  }
+
   const [step, setStep] = useState(0)
   const [examId, setExamId] = useState(null)
   const [examName, setExamName] = useState('')
@@ -717,7 +726,7 @@ function GradePaper() {
         const payload = {
           question_number,
           question_text,
-          question_type: 'short_answer',
+          question_type: 'structured',
           max_marks,
           // Preserve teacher-authored guide data when question number matches.
           answer_scheme: prevGuide?.answer_scheme || '',
@@ -992,7 +1001,7 @@ function GradePaper() {
       const res = await markingGuideAPI.addQuestion(examId, {
         question_number: String(markingGuide.length + 1),
         question_text: '',
-        question_type: 'short_answer',
+        question_type: 'structured',
         max_marks: 1,
         answer_scheme: ''
       })
@@ -1479,14 +1488,13 @@ function GradePaper() {
                       </td>
                       <td className="px-4 py-3">
                         <select
-                          value={q.question_type || 'short_answer'}
+                          value={normalizeQuestionType(q.question_type)}
                           onChange={(e) => updateGuideQuestion(i, 'question_type', e.target.value)}
                           className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
                         >
-                          <option value="short_answer">Short Answer</option>
-                          <option value="essay">Essay</option>
+                          <option value="structured">Structured</option>
                           <option value="mcq">MCQ</option>
-                          <option value="calculation">Calculation</option>
+                          <option value="open_ended">Open-ended</option>
                         </select>
                       </td>
                       <td className="px-4 py-3">

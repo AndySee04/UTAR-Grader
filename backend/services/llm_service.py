@@ -338,7 +338,7 @@ Return JSON array:
   {{
     "question_number": "1",
     "question_text": "the question",
-    "question_type": "short_answer|essay|mcq|calculation",
+    "question_type": "mcq|structured|open_ended",
     "answer_scheme": "expected answer or marking criteria",
     "max_marks": 5
   }}

@@ -13,7 +13,7 @@ class MarkingGuide(Base):
     exam_id = Column(CHAR(36), ForeignKey("exams.id"), nullable=False)
     question_number = Column(String(50), nullable=False)
     question_text = Column(Text, nullable=True)
-    question_type = Column(String(50), nullable=True)  # short_answer, essay, mcq, calculation
+    question_type = Column(String(50), nullable=True)  # mcq, structured, open_ended
     answer_scheme = Column(Text, nullable=True)
     max_marks = Column(Numeric(5, 2), nullable=True)
     is_modified = Column(Boolean, default=False)
