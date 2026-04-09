@@ -11,6 +11,9 @@ function ExamList() {
   const [sortBy, setSortBy] = useState('date_desc')
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [editingExamId, setEditingExamId] = useState(null)
+  const [editingExamName, setEditingExamName] = useState('')
+  const [renaming, setRenaming] = useState(false)
   const toast = useToast()
   const navigate = useNavigate()
 
@@ -52,6 +55,39 @@ function ExamList() {
       toast.error('Failed to delete exam')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const startRename = (exam) => {
+    setEditingExamId(exam.id)
+    setEditingExamName(exam.name || '')
+  }
+
+  const cancelRename = () => {
+    setEditingExamId(null)
+    setEditingExamName('')
+  }
+
+  const saveRename = async (exam) => {
+    const nextName = editingExamName.trim()
+    if (!nextName) {
+      toast.error('Exam name cannot be empty')
+      return
+    }
+    if (nextName === (exam.name || '').trim()) {
+      cancelRename()
+      return
+    }
+    setRenaming(true)
+    try {
+      const res = await examsAPI.update(exam.id, { name: nextName })
+      setExams((prev) => prev.map((e) => (e.id === exam.id ? { ...e, name: res.data?.name || nextName } : e)))
+      toast.success('Exam name updated')
+      cancelRename()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to rename exam')
+    } finally {
+      setRenaming(false)
     }
   }
 
@@ -212,14 +248,71 @@ function ExamList() {
               role="button"
               tabIndex={0}
               onClick={(e) => { if (!e.target.closest('button, a')) openExam(exam) }}
-              onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('button, a')) { e.preventDefault(); openExam(exam) } }}
+              onKeyDown={(e) => {
+                const isInteractive =
+                  !!e.target.closest('button, a, input, textarea, select, [contenteditable="true"]')
+                if ((e.key === 'Enter' || e.key === ' ') && !isInteractive) {
+                  e.preventDefault()
+                  openExam(exam)
+                }
+              }}
               className="card p-5 animate-fade-in cursor-pointer hover:ring-2 hover:ring-indigo-200 transition-shadow"
               style={{ animationDelay: `${index * 50}ms` }}
             >
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-base font-semibold text-gray-900 truncate">{exam.name}</h2>
+                    {editingExamId === exam.id ? (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          value={editingExamName}
+                          onChange={(e) => setEditingExamName(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              saveRename(exam)
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              cancelRename()
+                            }
+                          }}
+                          className="px-2 py-1 border border-gray-300 rounded-md text-sm w-64 max-w-full focus:ring-indigo-500 focus:border-indigo-500"
+                          autoFocus
+                        />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); saveRename(exam) }}
+                          disabled={renaming}
+                          className="px-2 py-1 text-xs font-medium text-emerald-700 border border-emerald-200 rounded-md hover:bg-emerald-50 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); cancelRename() }}
+                          disabled={renaming}
+                          className="px-2 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h2 className="text-base font-semibold text-gray-900 truncate">
+                          {exam.name}
+                        </h2>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startRename(exam) }}
+                          className="p-1 text-gray-400 hover:text-indigo-600 rounded hover:bg-indigo-50 transition-colors flex-shrink-0"
+                          title="Rename exam"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 8.586-8.586z" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                     {getStatusBadge(exam.status)}
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-500">
