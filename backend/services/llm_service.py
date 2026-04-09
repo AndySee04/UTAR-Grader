@@ -212,18 +212,40 @@ class LLMService:
         Returns:
             LLMResponse with cleaned text
         """
-        system_prompt = """You are a text correction assistant. Your job is to fix OCR errors in exam papers.
-Fix obvious spelling mistakes, correct character misrecognitions (like 'l' vs '1', 'O' vs '0'), 
-and improve formatting. Keep the original meaning and structure intact.
-Return ONLY the corrected text, no explanations."""
+        system_prompt = """You are an expert OCR text cleaner.
+Return ONLY valid JSON with exactly one key:
+{"corrected_text":"..."}
 
-        prompt = f"""Please correct this OCR text from an exam paper:
+Rules:
+- Fix OCR character errors and obvious spelling/grammar mistakes.
+- Keep original meaning.
+- Keep numbering, labels, and line breaks when possible.
+- Do not add any keys besides corrected_text.
+- Do not include markdown, comments, or extra text."""
 
+        prompt = f"""Clean this OCR text and return JSON only:
+
+OCR_TEXT_START
 {raw_text}
+OCR_TEXT_END
+"""
 
-Return the corrected text:"""
+        result = await self._call_ollama(prompt, system_prompt)
+        parsed = result.parsed_response if isinstance(result.parsed_response, dict) else None
+        corrected = ""
+        if parsed:
+            corrected = str(parsed.get("corrected_text") or "").strip()
 
-        return await self._call_ollama(prompt, system_prompt)
+        # Keep raw_response as normalized corrected text for downstream callers.
+        # If JSON parse fails, safely fall back to the model raw output.
+        final_text = corrected or (result.raw_response or "").strip()
+        return LLMResponse(
+            raw_response=final_text,
+            parsed_response=parsed,
+            model_used=result.model_used,
+            processing_time_ms=result.processing_time_ms,
+            tokens_used=result.tokens_used,
+        )
     
     async def generate_marking_guide(
         self,

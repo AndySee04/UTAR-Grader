@@ -340,11 +340,18 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 
 ## Current Progress
 
-**Status**: Completed all phases! Frontend and backend are fully built and integrated.
-**Last Updated**: 2026-03-31
+**Status**: Core phases completed; cleanup + CRAFT tuning improvements implemented.
+**Last Updated**: 2026-04-16
 
-### Next Steps:
+### Priority TODOs
 
-1. Create a test user account
-2. Run end-to-end tests by creating an exam, uploading real papers, and reviewing the AI grading
-3. Deploy application components to production environment
+- [x] Use Ollama (local model) to run spelling/grammar cleanup specifically for extracted **question text**
+  - Acceptance: cleanup can run immediately after extraction and persists cleaned text back to region/question rows.
+- [x] Fine-tune CRAFT detection for handwritten head/tail misses
+  - Acceptance: add tunable presets/controls for thresholds and verify improved line coverage on difficult samples.
+
+### Next Steps
+
+1. Run repeatable sample-based validation for the new CRAFT presets in your own exam set
+2. Record baseline vs tuned OCR examples (missed heads/tails) for report evidence
+3. Prepare deployment checklist and production environment validation

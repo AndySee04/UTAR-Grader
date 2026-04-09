@@ -112,6 +112,8 @@ function GradePaper() {
   const [regionCountByDocId, setRegionCountByDocId] = useState({})
   const [answerGuideDrafts, setAnswerGuideDrafts] = useState({})
   const [savingAnswerGuideId, setSavingAnswerGuideId] = useState(null)
+  const [autoCleanupEnabled, setAutoCleanupEnabled] = useState(true)
+  const [regionCleanupMeta, setRegionCleanupMeta] = useState({})
 
   const croppedDocs = useMemo(
     () => new Set(Object.entries(regionCountByDocId).filter(([, c]) => c > 0).map(([id]) => id)),
@@ -534,9 +536,14 @@ function GradePaper() {
             raw_text: ocrRes.data?.raw_text ?? ocrRes.data?.text ?? region.raw_text
           }))
         })
-        .then(({ region, raw_text }) => {
+        .then(async ({ region, raw_text }) => {
           const { marks, cleanedText } = extractMarksAndClean(raw_text || '')
           const finalText = cleanedText ?? raw_text
+          const basePayload = { raw_text: finalText, marks }
+          await processingAPI.updateRegionText(region.id, basePayload).catch(() => {})
+          const cleanupResult = await maybeCleanupExtractedText(region.id, finalText)
+          const postCleanText = cleanupResult.text ?? finalText
+
           setRegions(prev => {
             let question_number = region.question_number
             if (selectedDocType === 'question') {
@@ -553,11 +560,11 @@ function GradePaper() {
             const nextRegion = {
               ...region,
               question_number,
-              raw_text: finalText,
+              raw_text: postCleanText,
               marks
             }
             // Persist cleaned text, marks and question_number (if any)
-            const payloadUpdate = { raw_text: finalText, marks }
+            const payloadUpdate = { raw_text: postCleanText, marks }
             if (question_number) payloadUpdate.question_number = question_number
             processingAPI.updateRegionText(region.id, payloadUpdate).catch(() => {})
             return [...prev, nextRegion]
@@ -577,7 +584,7 @@ function GradePaper() {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
-  }, [isCropping, selectedDocId, activePage, selectedDocType, regions.length, questionTemplateRegions.length])
+  }, [isCropping, selectedDocId, activePage, selectedDocType, regions.length, questionTemplateRegions.length, autoCleanupEnabled])
 
   // Drag handlers
   const handleDrag = useCallback((e, zone) => {
@@ -691,7 +698,7 @@ function GradePaper() {
       for (const r of regionList) {
         const originalQNum = (r.question_number || '').trim()
         const question_number = originalQNum || String(newGuide.length + 1)
-        const question_text = (r.raw_text || r.processed_text || '').trim()
+        const question_text = (r.processed_text || r.raw_text || '').trim()
         const rawMarks = r.marks
         const max_marks = rawMarks ?? 0
         const prevGuide = existingGuideByQNum.get(question_number)
@@ -791,7 +798,7 @@ function GradePaper() {
             marks:
               r.marks != null
                 ? r.marks
-                : parseMarksFromText(r.raw_text || r.processed_text)
+                : parseMarksFromText(r.processed_text || r.raw_text)
           }))
         )
 
@@ -830,23 +837,57 @@ function GradePaper() {
     setRegionCountByDocId(prev => ({ ...prev, [docId]: (prev[docId] ?? 0) + 1 }))
   }
 
+  const maybeCleanupExtractedText = async (regionId, fallbackText) => {
+    if (!autoCleanupEnabled || selectedDocType !== 'question') {
+      return { text: fallbackText, changed: false, provider: null, model: null, fallbackUsed: false }
+    }
+    try {
+      const res = await processingAPI.cleanupText(regionId)
+      const cleaned = (res?.data?.processed_text || '').trim()
+      const nextText = cleaned || fallbackText
+      const meta = {
+        changed: Boolean(res?.data?.changed),
+        provider: res?.data?.provider || 'ollama',
+        model: res?.data?.model || '',
+        fallbackUsed: Boolean(res?.data?.fallback_used),
+        processed: true
+      }
+      setRegionCleanupMeta(prev => ({ ...prev, [regionId]: meta }))
+      return { text: nextText, ...meta }
+    } catch {
+      const meta = {
+        changed: false,
+        provider: 'ollama',
+        model: '',
+        fallbackUsed: true,
+        processed: false
+      }
+      setRegionCleanupMeta(prev => ({ ...prev, [regionId]: meta }))
+      return { text: fallbackText, ...meta }
+    }
+  }
+
   const handleRunOcr = async (regionId) => {
     setRunningOcrFor(regionId)
     try {
       const res = await processingAPI.runOCR(regionId)
-      setRegions(prev => prev.map(r => {
-        if (r.id !== regionId) return r
-        const newText = res.data?.raw_text ?? res.data?.text ?? r.raw_text
-        const { marks, cleanedText } = extractMarksAndClean(newText || '')
-        const finalText = cleanedText ?? newText
-        // Persist cleaned text and marks as well
-        processingAPI.updateRegionText(regionId, { raw_text: finalText, marks }).catch(() => {})
-        return {
-          ...r,
-          raw_text: finalText,
-          marks
-        }
-      }))
+      const target = regions.find((r) => r.id === regionId)
+      const newText = res.data?.raw_text ?? res.data?.text ?? target?.raw_text
+      const { marks, cleanedText } = extractMarksAndClean(newText || '')
+      const finalText = cleanedText ?? newText
+      await processingAPI.updateRegionText(regionId, { raw_text: finalText, marks }).catch(() => {})
+      const cleanupResult = await maybeCleanupExtractedText(regionId, finalText)
+      const postCleanText = cleanupResult.text ?? finalText
+
+      setRegions(prev => prev.map(r => (
+        r.id === regionId
+          ? {
+              ...r,
+              raw_text: postCleanText,
+              marks
+            }
+          : r
+      )))
       toast.success('OCR ran successfully')
     } catch (err) {
       toast.error('Failed to run OCR for this region')
@@ -1562,6 +1603,17 @@ function GradePaper() {
                 <p className="text-xs text-gray-500">
                   Scroll and drag to crop on desired region
                 </p>
+                {selectedDocType === 'question' && (
+                  <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={autoCleanupEnabled}
+                      onChange={(e) => setAutoCleanupEnabled(e.target.checked)}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    Auto-clean extracted question text (Ollama)
+                  </label>
+                )}
               </div>
               <button 
                 onClick={() => handleCloseRegionModal()}
@@ -1798,6 +1850,11 @@ function GradePaper() {
                                       className="w-14 px-1 py-0.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                     />
                                   </div>
+                                )}
+                                {selectedDocType === 'question' && regionCleanupMeta[region.id]?.processed && (
+                                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    Cleaned ({regionCleanupMeta[region.id]?.provider || 'ollama'})
+                                  </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">

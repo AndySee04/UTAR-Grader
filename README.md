@@ -28,6 +28,7 @@ An automated exam paper grading system using OCR (CRAFT + TrOCR) and LLM (Ollama
 - **Step 1 – Upload & Crop**
    - Upload the **question paper** PDF and one or more **student answer** PDFs.
    - **Crop the question paper**: open the question paper, draw regions around each question; OCR runs per region and the extracted text (without trailing “x marks”) plus marks value are saved.
+   - Optional **auto-cleanup** can run immediately after OCR for question regions (Ollama), with safe fallback to original OCR text if Ollama is unavailable.
    - **Crop each student answer**: open each student document, draw regions over answer areas; OCR runs per region and the per‑question answer text is saved.
    - For student answer regions, OCR uses **CRAFT text line detection** first, then applies **TrOCR per detected line**, then merges lines into final extracted text.
 - **Step 2 – Review Marking Guide**  
@@ -81,6 +82,32 @@ ollama pull llama3:8b
 ```
 
 Ollama is required for grading (and any other LLM features you enable).
+
+## OCR tuning (CRAFT + TrOCR)
+
+Use `.env` to control CRAFT detection behavior:
+
+- `CRAFT_PRESET=balanced|faint_handwriting|strict`
+- `CRAFT_TEXT_THRESHOLD`
+- `CRAFT_LINK_THRESHOLD`
+- `CRAFT_LOW_TEXT`
+- `OCR_DIAGNOSTICS=1` (optional debug logs)
+
+Preset values are defaults, and numeric threshold env values override preset values.
+
+### Recommended tuning checklist
+
+1. Start with `CRAFT_PRESET=balanced`.
+2. Run OCR on a sample with known head/tail misses.
+3. If misses remain, switch to `faint_handwriting`.
+4. If over-detection/noisy boxes appear, raise `CRAFT_TEXT_THRESHOLD` and/or `CRAFT_LINK_THRESHOLD`.
+5. Re-run the same sample and compare line coverage and extracted text quality.
+
+### Troubleshooting
+
+- **Ollama cleanup fails**: cleanup endpoint now falls back to original OCR text (non-fatal), so processing continues.
+- **CRAFT misses start/end characters**: try `CRAFT_PRESET=faint_handwriting`, then lower `CRAFT_TEXT_THRESHOLD` slightly.
+- **CRAFT detects too much noise**: use `CRAFT_PRESET=strict` or increase thresholds.
 
 ## Debugging (optional)
 

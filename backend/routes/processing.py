@@ -7,6 +7,7 @@ import io
 import sys
 import os
 import subprocess
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -190,6 +191,21 @@ async def run_ocr_on_region(
         # Run OCR - use printed-text model for question papers, handwriting model otherwise
         ocr = ocr_service_printed if document.doc_type == "question_paper" else ocr_service
         text, line_details = ocr.extract_text_from_image(cropped)
+        heights = [
+            (d.get("region", {}) or {}).get("height")
+            for d in (line_details or [])
+            if isinstance(d, dict)
+        ]
+        heights = [h for h in heights if isinstance(h, (int, float))]
+        avg_line_height = (sum(heights) / len(heights)) if heights else 0.0
+        print(
+            "[OCR] "
+            f"region_id={region.id} "
+            f"doc_type={document.doc_type} "
+            f"line_count={len(line_details)} "
+            f"avg_line_height={avg_line_height:.2f}",
+            flush=True
+        )
         
         # Update region
         region.raw_text = text
@@ -198,7 +214,8 @@ async def run_ocr_on_region(
         return {
             "region_id": region_id,
             "raw_text": text,
-            "line_count": len(line_details)
+            "line_count": len(line_details),
+            "avg_line_height": avg_line_height
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
@@ -364,10 +381,26 @@ async def cleanup_region_text(
     if not region.raw_text:
         raise HTTPException(status_code=400, detail="No raw text to clean up. Run OCR first.")
     
+    started = time.perf_counter()
+    fallback_used = False
+    changed = False
+    cleaned_text = region.raw_text
+    model_used = llm_service.model
+    tokens_used = None
+    processing_time_ms = 0
+    llm_error = None
+
     try:
         result = await llm_service.cleanup_ocr_text(region.raw_text)
-        
-        # Save LLM response
+        parsed = result.parsed_response if isinstance(result.parsed_response, dict) else {}
+        parsed_text = str(parsed.get("corrected_text") or "").strip() if parsed else ""
+        cleaned_text = parsed_text or (result.raw_response or "").strip() or region.raw_text
+        changed = cleaned_text.strip() != (region.raw_text or "").strip()
+        model_used = result.model_used or llm_service.model
+        tokens_used = result.tokens_used
+        processing_time_ms = result.processing_time_ms or 0
+
+        # Save LLM response for audit trail
         llm_response = LLMResponse(
             exam_id=region.document.exam_id,
             request_type="text_cleanup",
@@ -375,23 +408,45 @@ async def cleanup_region_text(
             prompt_used="cleanup_ocr_text",
             raw_response=result.raw_response,
             parsed_response=result.parsed_response,
-            model_used=result.model_used,
-            processing_time_ms=result.processing_time_ms,
-            tokens_used=result.tokens_used
+            model_used=model_used,
+            processing_time_ms=processing_time_ms,
+            tokens_used=tokens_used
         )
         db.add(llm_response)
-        
-        # Update region with cleaned text
-        region.processed_text = result.raw_response
-        db.commit()
-        
-        return {
-            "region_id": region_id,
-            "raw_text": region.raw_text,
-            "processed_text": region.processed_text
-        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
+        # Non-fatal fallback: keep original OCR text if cleanup fails/unavailable.
+        fallback_used = True
+        llm_error = str(e)
+
+    region.processed_text = cleaned_text
+    db.commit()
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    print(
+        "[Cleanup] "
+        f"region_id={region.id} "
+        f"doc_type={region.document.doc_type} "
+        f"provider=ollama "
+        f"model={model_used} "
+        f"changed={changed} "
+        f"fallback_used={fallback_used} "
+        f"elapsed_ms={elapsed_ms}",
+        flush=True
+    )
+
+    payload = {
+        "region_id": region_id,
+        "raw_text": region.raw_text,
+        "processed_text": region.processed_text,
+        "provider": "ollama",
+        "model": model_used,
+        "changed": changed,
+        "fallback_used": fallback_used,
+        "processing_time_ms": processing_time_ms if processing_time_ms else elapsed_ms,
+        "tokens_used": tokens_used,
+        "error": llm_error
+    }
+    return payload
 
 
 @router.get("/health/ocr")

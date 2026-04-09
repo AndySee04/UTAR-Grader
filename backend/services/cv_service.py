@@ -3,6 +3,17 @@ import numpy as np
 from PIL import Image
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import (
+    CRAFT_PRESET,
+    CRAFT_TEXT_THRESHOLD,
+    CRAFT_LINK_THRESHOLD,
+    CRAFT_LOW_TEXT,
+    OCR_DIAGNOSTICS,
+)
 
 
 @dataclass
@@ -235,7 +246,16 @@ class CVService:
         height, width = img_rgb.shape[:2]
 
         try:
-            horizontal_list, free_list = reader.detect(img_rgb)
+            try:
+                horizontal_list, free_list = reader.detect(
+                    img_rgb,
+                    text_threshold=CRAFT_TEXT_THRESHOLD,
+                    link_threshold=CRAFT_LINK_THRESHOLD,
+                    low_text=CRAFT_LOW_TEXT,
+                )
+            except TypeError:
+                # Compatibility fallback for EasyOCR versions without these kwargs.
+                horizontal_list, free_list = reader.detect(img_rgb)
         except Exception:
             return []
 
@@ -359,6 +379,18 @@ class CVService:
                 padded.append(TextRegion(x=x1, y=y1, width=w, height=h))
 
         padded.sort(key=lambda r: r.y)
+        if OCR_DIAGNOSTICS:
+            avg_h = float(np.mean([r.height for r in padded])) if padded else 0.0
+            print(
+                "[CRAFT] "
+                f"preset={CRAFT_PRESET} "
+                f"text_threshold={CRAFT_TEXT_THRESHOLD} "
+                f"link_threshold={CRAFT_LINK_THRESHOLD} "
+                f"low_text={CRAFT_LOW_TEXT} "
+                f"line_count={len(padded)} "
+                f"avg_line_height={avg_h:.2f}",
+                flush=True
+            )
         return padded
 
     def detect_text_lines(
