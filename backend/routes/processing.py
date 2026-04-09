@@ -259,8 +259,41 @@ async def update_region_text(
         # Keep processed_text in sync with manual edits so regenerated
         # marking guides always reflect the latest teacher-corrected text.
         region.processed_text = body["raw_text"]
+    synced_student_regions = 0
     if "question_number" in body:
+        old_question_number = (region.question_number or "").strip()
         region.question_number = body["question_number"]
+        # Optional sync: when question-paper numbering is changed manually,
+        # propagate the label update to student-answer regions in the same exam.
+        should_sync_students = bool(body.get("sync_student_regions"))
+        new_question_number = (body.get("question_number") or "").strip()
+        if (
+            should_sync_students
+            and region.document
+            and region.document.doc_type == "question_paper"
+            and old_question_number
+            and new_question_number
+            and old_question_number != new_question_number
+        ):
+            student_regions_all = (
+                db.query(ExtractedText)
+                .join(Document)
+                .filter(
+                    Document.exam_id == region.document.exam_id,
+                    Document.doc_type == "student_answer",
+                )
+                .all()
+            )
+
+            old_norm = old_question_number.strip().lower()
+            student_regions = [
+                sr for sr in student_regions_all
+                if (sr.question_number or "").strip().lower() == old_norm
+            ]
+
+            for sr in student_regions:
+                sr.question_number = new_question_number
+            synced_student_regions = len(student_regions)
     if "marks" in body:
         try:
             region.marks = float(body["marks"]) if body["marks"] is not None else None
@@ -273,6 +306,7 @@ async def update_region_text(
         "raw_text": region.raw_text,
         "question_number": region.question_number,
         "marks": region.marks,
+        "synced_student_regions": synced_student_regions,
     }
 
 

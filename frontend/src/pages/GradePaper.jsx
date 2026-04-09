@@ -114,6 +114,8 @@ function GradePaper() {
   const [savingAnswerGuideId, setSavingAnswerGuideId] = useState(null)
   const [autoCleanupEnabled, setAutoCleanupEnabled] = useState(true)
   const [regionCleanupMeta, setRegionCleanupMeta] = useState({})
+  const [gradingProvider, setGradingProvider] = useState('ollama')
+  const [gradingModel, setGradingModel] = useState('')
 
   const croppedDocs = useMemo(
     () => new Set(Object.entries(regionCountByDocId).filter(([, c]) => c > 0).map(([id]) => id)),
@@ -814,8 +816,9 @@ function GradePaper() {
         }
       }
 
-      // When cropping student answers, ensure we have the question-paper template loaded
-      if (docType === 'student_answer' && uploadedDocs.question?.id && questionTemplateRegions.length === 0) {
+      // When cropping student answers, always refresh the question-paper template
+      // so the latest edited question numbers are used for new/re-scanned crops.
+      if (docType === 'student_answer' && uploadedDocs.question?.id) {
         try {
           const qRegionsRes = await documentsAPI.getRegions(uploadedDocs.question.id)
           const qList = qRegionsRes.data || []
@@ -1006,7 +1009,12 @@ function GradePaper() {
     setError('')
 
     try {
-      await gradingAPI.start(examId)
+      const provider = (gradingProvider || 'ollama').trim()
+      const model = (gradingModel || '').trim()
+      await gradingAPI.start(examId, {
+        provider,
+        model: model || undefined
+      })
       toast.success('Grading started! Check the Exam List for progress.')
       navigate('/exams')
     } catch (err) {
@@ -1561,30 +1569,47 @@ function GradePaper() {
                 Total: {markingGuide.reduce((sum, q) => sum + (q.max_marks || 0), 0)} marks
               </span>
             </div>
-            <button
-              onClick={handleStartGrading}
-              disabled={loading}
-              className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 
-                         shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2
-                         disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Starting...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Start Grading
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                value={gradingProvider}
+                onChange={(e) => setGradingProvider(e.target.value)}
+                className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="ollama">Ollama (local)</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+              <input
+                type="text"
+                value={gradingModel}
+                onChange={(e) => setGradingModel(e.target.value)}
+                placeholder={gradingProvider === 'openrouter' ? 'e.g. meta-llama/llama-3.1-8b-instruct' : 'Optional model override'}
+                className="w-72 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+              <button
+                onClick={handleStartGrading}
+                disabled={loading}
+                className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 
+                           shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2
+                           disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Start Grading
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1930,6 +1955,7 @@ function GradePaper() {
                                 })
 
                                 const handleChange = (nextMain, nextPart, nextSub) => {
+                                  const oldLabel = (region.question_number || '').trim()
                                   const finalLabel = formatQuestionLabel(nextMain, nextPart, nextSub)
                                   setRegions(prev =>
                                     prev.map(r =>
@@ -1937,7 +1963,11 @@ function GradePaper() {
                                     )
                                   )
                                   processingAPI
-                                    .updateRegionText(region.id, { question_number: finalLabel })
+                                    .updateRegionText(region.id, {
+                                      question_number: finalLabel,
+                                      old_question_number: oldLabel,
+                                      sync_student_regions: true
+                                    })
                                     .catch(() => {})
                                 }
 

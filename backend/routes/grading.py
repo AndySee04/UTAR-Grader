@@ -80,22 +80,29 @@ async def start_grading(
     if not student_docs:
         raise HTTPException(status_code=400, detail="No student answer sheets uploaded.")
     
+    provider = (request.provider or "ollama").strip().lower()
+    if provider not in {"ollama", "openrouter"}:
+        raise HTTPException(status_code=400, detail="Invalid provider. Use 'ollama' or 'openrouter'.")
+    model = (request.model or "").strip() or None
+
     # Update exam status
     exam.status = "grading"
     db.commit()
     
     # Start background grading
-    background_tasks.add_task(grade_exam_background, exam_id)
+    background_tasks.add_task(grade_exam_background, exam_id, provider, model)
     
     return StartGradingResponse(
         exam_id=exam_id,
         status="grading",
         message="Grading started in background",
-        students_to_grade=len(student_docs)
+        students_to_grade=len(student_docs),
+        provider=provider,
+        model=model
     )
 
 
-async def grade_exam_background(exam_id: str):
+async def grade_exam_background(exam_id: str, provider: str = "ollama", model: str = None):
     """Background task to grade all student papers."""
     from database import SessionLocal
     db = SessionLocal()
@@ -114,7 +121,7 @@ async def grade_exam_background(exam_id: str):
         
         for doc in student_docs:
             try:
-                await grade_student_paper(db, doc, guides, exam_id)
+                await grade_student_paper(db, doc, guides, exam_id, provider=provider, model=model)
             except Exception as e:
                 print(f"Error grading document {doc.id}: {e}")
         
@@ -131,7 +138,14 @@ async def grade_exam_background(exam_id: str):
         db.close()
 
 
-async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGuide], exam_id: str):
+async def grade_student_paper(
+    db: Session,
+    doc: Document,
+    guides: List[MarkingGuide],
+    exam_id: str,
+    provider: str = "ollama",
+    model: str = None
+):
     """Grade a single student's paper."""
 
     # Before grading, remove any previous results for this student document so
@@ -221,7 +235,9 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                 question=guide.question_text or "",
                 answer_scheme=guide.answer_scheme or "",
                 student_answer=student_answer_text,
-                max_marks=float(guide.max_marks or 0)
+                max_marks=float(guide.max_marks or 0),
+                provider=provider,
+                model_override=model
             )
 
             # Parse / normalize score from the LLM response
@@ -307,7 +323,7 @@ async def grade_student_paper(db: Session, doc: Document, guides: List[MarkingGu
                 input_text=f"Q: {guide.question_text}\nStudent: {student_answer_text[:1000]}",
                 raw_response=result.raw_response,
                 parsed_response=parsed,
-                model_used=result.model_used,
+                model_used=f"{provider}:{result.model_used}",
                 processing_time_ms=result.processing_time_ms
             )
             db.add(llm_resp)

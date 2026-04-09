@@ -107,7 +107,8 @@ export const markingGuideAPI = {
 
 // Grading
 export const gradingAPI = {
-  start: (examId) => api.post(`/exams/${examId}/grade`, { process_all: true }),
+  start: (examId, payload = {}) =>
+    api.post(`/exams/${examId}/grade`, { process_all: true, ...payload }),
   getGrades: (examId) => api.get(`/exams/${examId}/grades`),
   getStudentGrades: (examId, docId) =>
     api.get(`/exams/${examId}/grades/${docId}`),

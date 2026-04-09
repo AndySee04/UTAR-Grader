@@ -55,6 +55,8 @@ class ExamGradingSummary(BaseModel):
 
 class StartGradingRequest(BaseModel):
     process_all: bool = True  # If false, only grade ungraded
+    provider: str = "ollama"
+    model: Optional[str] = None
 
 
 class StartGradingResponse(BaseModel):
@@ -62,3 +64,5 @@ class StartGradingResponse(BaseModel):
     status: str
     message: str
     students_to_grade: int
+    provider: str = "ollama"
+    model: Optional[str] = None

@@ -9,7 +9,13 @@ import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import OLLAMA_BASE_URL, OLLAMA_MODEL
+from config import (
+    OLLAMA_BASE_URL,
+    OLLAMA_MODEL,
+    OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_MODEL,
+)
 
 
 @dataclass
@@ -165,6 +171,59 @@ class LLMService:
             processing_time_ms=processing_time,
             tokens_used=result.get("eval_count")
         )
+
+    async def _call_openrouter(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        model_override: Optional[str] = None
+    ) -> LLMResponse:
+        """Call OpenRouter chat completions API."""
+        if not OPENROUTER_API_KEY:
+            raise ValueError("OPENROUTER_API_KEY is not configured")
+
+        start_time = time.time()
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        model_name = (model_override or OPENROUTER_MODEL).strip()
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": 0.1,
+        }
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(
+                f"{OPENROUTER_BASE_URL}/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        processing_time = int((time.time() - start_time) * 1000)
+        raw_response = (
+            result.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+        parsed = self._try_parse_json(raw_response)
+        tokens = (result.get("usage", {}) or {}).get("total_tokens")
+
+        return LLMResponse(
+            raw_response=raw_response,
+            parsed_response=parsed,
+            model_used=model_name,
+            processing_time_ms=processing_time,
+            tokens_used=tokens
+        )
     
     def _try_parse_json(self, text: str) -> Optional[Dict[str, Any]]:
         """Try to extract and parse JSON from response text."""
@@ -292,7 +351,9 @@ Return JSON array:
         question: str,
         answer_scheme: str,
         student_answer: str,
-        max_marks: float
+        max_marks: float,
+        provider: str = "ollama",
+        model_override: Optional[str] = None
     ) -> LLMResponse:
         """
         Grade a student's answer using LLM.
@@ -346,6 +407,9 @@ Return only valid JSON (no markdown, no extra text)."""
             f'{{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}'
         )
 
+        provider_norm = (provider or "ollama").strip().lower()
+        if provider_norm == "openrouter":
+            return await self._call_openrouter(prompt, system_prompt, model_override=model_override)
         return await self._call_ollama(prompt, system_prompt)
     
     async def check_health(self) -> bool:
