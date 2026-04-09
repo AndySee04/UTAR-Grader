@@ -256,6 +256,9 @@ async def update_region_text(
     # Allow updating OCR text and optional metadata like question_number / marks
     if "raw_text" in body:
         region.raw_text = body["raw_text"]
+        # Keep processed_text in sync with manual edits so regenerated
+        # marking guides always reflect the latest teacher-corrected text.
+        region.processed_text = body["raw_text"]
     if "question_number" in body:
         region.question_number = body["question_number"]
     if "marks" in body:
