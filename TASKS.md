@@ -227,6 +227,43 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 
 ---
 
+## Phase 12: Model lifecycle, LLM/OCR refinements & UI
+
+### Backend / OCR / LLM
+
+- [x] Centralize TrOCR loading in `model_loader.py`; preload model on FastAPI lifespan startup (`main.py`)
+- [x] Local Ollama grading: resolve chat model via `get_ollama_model()` / `OLLAMA_MODEL` from environment (no stale client-side override)
+- [x] Optional Ollama **vision** pass for student-answer OCR refresh (config e.g. `OLLAMA_VISION_MODEL`, JSON `corrected_text`, image resize, error handling; `use_ollama_vision` query param where applicable)
+- [x] `processing.py`: re-raise `HTTPException` before generic `except` so clients get correct status codes (e.g. 502 vs 500)
+
+### Grade Paper / marking workflow (frontend)
+
+- [x] Marking guide: yellow border / focus ring for **unsaved** answer guide edits; avoid clashing blue focus on that state
+- [x] Crop modal: sticky **Extracted Text** header while scrolling region list
+- [x] Question type `<select>` uses `q.question_type || 'structured'` only (removed `normalizeQuestionType` indirection)
+- [x] Process step: student document row — outer control is `div role="button"` + keyboard handling; inner delete remains a real `<button>` (fixes invalid nested buttons)
+
+### Chrome & theme
+
+- [x] Navbar: frosted / semi-transparent background when scrolled (`backdrop-blur`, layered opacity)
+- [x] **Dark mode**: Tailwind `darkMode: 'class'`; `ThemeProvider` + `localStorage` key `utar-grader-theme`; `ThemeToggle` in Navbar and on Login/Register
+- [x] `index.html` inline script applies `html.dark` before paint to reduce flash
+- [x] Global dark styles in `index.css` (cards, inputs, tables, drop zones, badges, auth shell, scrollbars)
+- [x] Page-level dark pass: `Dashboard`, `GradePaper`, `ExamList`, `ExamResults`, `ManageAccount`, auth pages, loading spinner in `App.jsx`
+- [x] Dark mode readability: marking guide footer — **“N questions”** and **“Total: … marks”** pill (slate chip + high-contrast text; no light-on-white)
+
+### Files touched (high level)
+
+- [x] `backend/main.py`, `backend/model_loader.py`, `backend/config.py`
+- [x] `backend/services/ocr_service.py`, `backend/services/llm_service.py`
+- [x] `backend/routes/processing.py`, `backend/routes/grading.py` (as needed for above features)
+- [x] `frontend/tailwind.config.js`, `frontend/index.html`, `frontend/src/main.jsx`
+- [x] `frontend/src/context/ThemeContext.jsx`, `frontend/src/components/ThemeToggle.jsx`
+- [x] `frontend/src/components/Navbar.jsx`, `frontend/src/index.css`
+- [x] `frontend/src/pages/GradePaper.jsx`, `ExamList.jsx`, `ExamResults.jsx`, `ManageAccount.jsx`, `Login.jsx`, `Register.jsx`, `Dashboard.jsx`, `App.jsx`
+
+---
+
 ## Frontend Files Created
 
 - [x] `frontend/package.json` - Dependencies
@@ -246,6 +283,8 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] `frontend/src/pages/ExamList.jsx` - Exam list
 - [x] `frontend/src/pages/ExamResults.jsx` - Results view
 - [x] `frontend/src/pages/ManageAccount.jsx` - Account settings
+- [x] `frontend/src/context/ThemeContext.jsx` - Light/dark theme + persistence
+- [x] `frontend/src/components/ThemeToggle.jsx` - Sun/moon toggle control
 
 ---
 
@@ -340,8 +379,8 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 
 ## Current Progress
 
-**Status**: Core phases completed; cleanup + CRAFT tuning improvements implemented.
-**Last Updated**: 2026-04-16
+**Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
+**Last Updated**: 2026-04-17
 
 ### Priority TODOs
 
@@ -349,9 +388,13 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
   - Acceptance: cleanup can run immediately after extraction and persists cleaned text back to region/question rows.
 - [x] Fine-tune CRAFT detection for handwritten head/tail misses
   - Acceptance: add tunable presets/controls for thresholds and verify improved line coverage on difficult samples.
+- [x] TrOCR preload on API startup; centralized model loader
+- [x] Dark mode (class strategy, persistence, main surfaces + marking guide contrast)
+- [x] Optional Ollama vision for student OCR refresh (env-driven model; API behavior documented in code/config)
 
 ### Next Steps
 
-1. Run repeatable sample-based validation for the new CRAFT presets in your own exam set
-2. Record baseline vs tuned OCR examples (missed heads/tails) for report evidence
-3. Prepare deployment checklist and production environment validation
+1. Run repeatable sample-based validation for CRAFT presets on your exam set
+2. Record baseline vs tuned OCR examples (missed heads/tails) for regression evidence
+3. Validate `OLLAMA_MODEL` / optional vision env vars in staging (latency, GPU/RAM)
+4. Prepare deployment checklist and production environment validation

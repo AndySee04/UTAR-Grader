@@ -143,25 +143,25 @@ function GradePaper() {
       border: 'border-emerald-500/90',
       fillBorder: 'border-emerald-500/90',
       fillBg: 'bg-emerald-400/25',
-      badge: 'bg-emerald-100 text-emerald-800'
+      badge: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300'
     },
     {
       border: 'border-indigo-500/90',
       fillBorder: 'border-indigo-500/90',
       fillBg: 'bg-indigo-400/20',
-      badge: 'bg-indigo-100 text-indigo-800'
+      badge: 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300'
     },
     {
       border: 'border-amber-500/90',
       fillBorder: 'border-amber-500/90',
       fillBg: 'bg-amber-400/25',
-      badge: 'bg-amber-100 text-amber-800'
+      badge: 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300'
     },
     {
       border: 'border-rose-500/90',
       fillBorder: 'border-rose-500/90',
       fillBg: 'bg-rose-400/20',
-      badge: 'bg-rose-100 text-rose-800'
+      badge: 'bg-rose-100 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300'
     }
   ]
 
@@ -1056,13 +1056,13 @@ function GradePaper() {
               </svg>
             )}
           </div>
-          <h3 className="font-semibold text-gray-700">{label}</h3>
+          <h3 className="font-semibold text-gray-700 dark:text-slate-300">{label}</h3>
           {file ? (
             <span className="text-sm text-emerald-600 font-medium">
               {typeof file === 'object' && file.name ? file.name : `${file} files selected`}
             </span>
           ) : (
-            <span className="text-sm text-gray-400">{subtitle}</span>
+            <span className="text-sm text-gray-400 dark:text-slate-500">{subtitle}</span>
           )}
         </div>
       </label>
@@ -1073,8 +1073,8 @@ function GradePaper() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Grade Paper</h1>
-        <p className="text-sm text-gray-500 mt-1">Upload, process, and grade exam papers with AI</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Grade Paper</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Upload, process, and grade exam papers with AI</p>
       </div>
 
       {/* Step Indicator */}
@@ -1086,7 +1086,7 @@ function GradePaper() {
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
                   i < step ? 'bg-emerald-100 text-emerald-700' :
                   i === step ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25' :
-                  'bg-gray-100 text-gray-400'
+                  'bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500'
                 }`}>
                   {i < step ? (
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1097,12 +1097,12 @@ function GradePaper() {
                   )}
                 </div>
                 <span className={`text-sm font-medium hidden sm:block ${
-                  i <= step ? 'text-gray-900' : 'text-gray-400'
+                  i <= step ? 'text-gray-900 dark:text-slate-100' : 'text-gray-400 dark:text-slate-500'
                 }`}>{s.label}</span>
               </div>
               {i < STEPS.length - 1 && (
                 <div className={`flex-1 h-0.5 mx-4 rounded-full transition-colors ${
-                  i < step ? 'bg-emerald-400' : 'bg-gray-200'
+                  i < step ? 'bg-emerald-400' : 'bg-gray-200 dark:bg-slate-600'
                 }`} />
               )}
             </div>
@@ -1112,7 +1112,7 @@ function GradePaper() {
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm animate-fade-in">
+        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm animate-fade-in">
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -1129,7 +1129,7 @@ function GradePaper() {
       {step === 0 && (
         <div className="card p-6 space-y-6 animate-fade-in">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Exam Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Exam Name</label>
             <input
               type="text"
               value={examName}
@@ -1165,11 +1165,11 @@ function GradePaper() {
             {studentAnswers.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {studentAnswers.map((file, i) => (
-                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg text-sm">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-slate-800/80 rounded-lg text-sm border border-transparent dark:border-slate-700">
+                    <svg className="w-4 h-4 text-gray-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
-                    <span className="text-gray-600 truncate max-w-[150px]">{file.name}</span>
+                    <span className="text-gray-600 dark:text-slate-300 truncate max-w-[150px]">{file.name}</span>
                     <button
                       onClick={() => removeStudentFile(i)}
                       className="text-gray-400 hover:text-red-500 transition-colors"
@@ -1213,17 +1213,17 @@ function GradePaper() {
       {step === 1 && (
         <div className="card p-6 space-y-6 animate-fade-in">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Process Documents</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Process Documents</h2>
 
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
+            <div className="bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl p-4 border border-indigo-100 dark:border-indigo-900/50">
               <p className="text-xs font-medium text-indigo-500 uppercase tracking-wide">Question Paper</p>
               <p className="text-2xl font-bold text-indigo-700 mt-1">{uploadedDocs.question?.page_count || 0}</p>
               <p className="text-xs text-indigo-400">pages</p>
             </div>
-            <div className="bg-emerald-50/50 rounded-xl p-4 border border-emerald-100">
+            <div className="bg-emerald-50/50 dark:bg-emerald-950/40 rounded-xl p-4 border border-emerald-100 dark:border-emerald-900/50">
               <p className="text-xs font-medium text-emerald-500 uppercase tracking-wide">Student Answers</p>
               <p className="text-2xl font-bold text-emerald-700 mt-1">{uploadedDocs.students?.length || 0}</p>
               <p className="text-xs text-emerald-400">files</p>
@@ -1235,7 +1235,7 @@ function GradePaper() {
               <div className="relative">
                 <div className="animate-spin rounded-full h-14 w-14 border-4 border-indigo-100 border-t-indigo-600"></div>
               </div>
-              <p className="text-sm font-medium text-gray-600">{processStatus}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-slate-400">{processStatus}</p>
               <div className="w-full max-w-xs progress-bar">
                 <div className="progress-bar-fill" style={{ width: '60%' }} />
               </div>
@@ -1243,19 +1243,19 @@ function GradePaper() {
           )}
 
           {!processing && uploadedDocs.question && (
-            <div className="mt-6 border-t border-gray-100 pt-6">
-              <h3 className="text-sm font-semibold text-gray-900 mb-1">Crop Question Paper</h3>
+            <div className="mt-6 border-t border-gray-100 dark:border-slate-700 pt-6">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-1">Crop Question Paper</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                 <button
                   onClick={() => handleViewRegions(uploadedDocs.question.id, 'question')}
-                  className="text-left p-3 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group flex items-center justify-between"
+                  className="text-left p-3 rounded-xl border border-gray-200 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/30 transition-all group flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2 overflow-hidden">
                     <svg className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium text-gray-700 truncate">Question paper</span>
+                      <span className="text-sm font-medium text-gray-700 dark:text-slate-300 truncate">Question paper</span>
                       <span className={`text-[11px] font-medium ${(regionCountByDocId[uploadedDocs.question.id] ?? 0) > 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
                         {(regionCountByDocId[uploadedDocs.question.id] ?? 0) > 0
                           ? `${regionCountByDocId[uploadedDocs.question.id]} region(s) cropped ✅`
@@ -1275,7 +1275,7 @@ function GradePaper() {
             <div className="mt-6 border-t border-gray-100 pt-6">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Crop Student Answer</h3>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Crop Student Answer</h3>
                   <p className="text-xs font-medium text-gray-600">
                     Progress: {croppedStudentCount} / {studentDocs.length} students cropped
                   </p>
@@ -1336,14 +1336,14 @@ function GradePaper() {
                           handleViewRegions(doc.id)
                         }
                       }}
-                      className="relative text-left p-3 rounded-xl border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group flex items-center justify-between cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                      className="relative text-left p-3 rounded-xl border border-gray-200 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/30 transition-all group flex items-center justify-between cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
                     >
                       <div className="flex items-center gap-2 overflow-hidden pr-6">
                         <svg className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-700 truncate">
+                          <span className="text-sm font-medium text-gray-700 dark:text-slate-300 truncate">
                             {doc.student_name || 'Student Document'}
                           </span>
                           <span className={`text-[11px] font-medium ${
@@ -1435,8 +1435,8 @@ function GradePaper() {
         <div className="card p-6 space-y-6 animate-fade-in">
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Review Marking Guide</h2>
-              <p className="text-sm text-gray-500 mt-1">Edit questions, types, and marks as needed.</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Review Marking Guide</h2>
+              <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Edit questions, types, and marks as needed.</p>
             </div>
             <button
               type="button"
@@ -1480,7 +1480,7 @@ function GradePaper() {
                   <React.Fragment key={q.id}>
                     <tr className="table-row align-top">
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center justify-center w-16 px-2 py-1.5 rounded-lg text-sm font-medium text-gray-800 bg-gray-50 border border-gray-100">
+                        <span className="inline-flex items-center justify-center w-16 px-2 py-1.5 rounded-lg text-sm font-medium text-gray-800 dark:text-slate-200 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-600">
                           {q.question_number}
                         </span>
                       </td>
@@ -1488,7 +1488,7 @@ function GradePaper() {
                         <input
                           value={q.question_text || ''}
                           onChange={(e) => updateGuideQuestion(i, 'question_text', e.target.value)}
-                          className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-indigo-500 focus:border-indigo-500"
                           placeholder="Enter question text..."
                         />
                       </td>
@@ -1496,7 +1496,7 @@ function GradePaper() {
                         <select
                           value={q.question_type || 'structured'}
                           onChange={(e) => updateGuideQuestion(i, 'question_type', e.target.value)}
-                          className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                          className="px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-indigo-500 focus:border-indigo-500"
                         >
                           <option value="structured">Structured</option>
                           <option value="mcq">MCQ</option>
@@ -1508,12 +1508,12 @@ function GradePaper() {
                           type="number"
                           value={q.max_marks || 0}
                           onChange={(e) => updateGuideQuestion(i, 'max_marks', parseFloat(e.target.value))}
-                          className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                          className="w-20 px-2 py-1.5 border border-gray-200 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-indigo-500 focus:border-indigo-500"
                         />
                       </td>
                     </tr>
-                    <tr className="bg-gray-50/60">
-                      <td className="px-4 pt-1 pb-2 text-left align-top text-[11px] font-medium text-gray-500">
+                    <tr className="bg-gray-50/60 dark:bg-slate-800/50">
+                      <td className="px-4 pt-1 pb-2 text-left align-top text-[11px] font-medium text-gray-500 dark:text-slate-400">
                         Answer guide
                       </td>
                       <td className="px-4 py-2 align-top" colSpan={4}>
@@ -1527,10 +1527,10 @@ function GradePaper() {
                               }))
                             }
                             rows={6}
-                            className={`w-full min-h-[120px] px-3 py-2 pr-16 rounded-lg text-sm resize-y bg-white text-neutral-900 placeholder:text-gray-400 ${
+                            className={`w-full min-h-[120px] px-3 py-2 pr-16 rounded-lg text-sm resize-y bg-white dark:bg-slate-800 text-neutral-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 ${
                               answerGuideUnsaved
                                 ? 'answer-guide-unsaved border-2 border-yellow-400 focus:ring-2 focus:ring-yellow-400/45 focus:border-yellow-500'
-                                : 'border border-gray-200 focus:ring-indigo-500 focus:border-indigo-500'
+                                : 'border border-gray-200 dark:border-slate-600 focus:ring-indigo-500 focus:border-indigo-500'
                             }`}
                             placeholder="Describe the ideal/correct answer, key points, marking notes..."
                           />
@@ -1581,10 +1581,10 @@ function GradePaper() {
 
           <div className="flex justify-between items-center pt-2">
             <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-gray-600 dark:text-slate-300">
                 {markingGuide.length} questions
               </span>
-              <span className="text-sm font-semibold text-gray-700 bg-gray-100 px-3 py-1 rounded-full">
+              <span className="text-sm font-semibold text-gray-800 dark:text-slate-100 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 px-3 py-1 rounded-full">
                 Total: {markingGuide.reduce((sum, q) => sum + (q.max_marks || 0), 0)} marks
               </span>
             </div>
@@ -1596,7 +1596,7 @@ function GradePaper() {
                   setGradingProvider(v)
                   if (v === 'ollama') setGradingModel('')
                 }}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               >
                 <option value="ollama">Ollama (local)</option>
                 <option value="openrouter">OpenRouter</option>
@@ -1607,10 +1607,10 @@ function GradePaper() {
                   value={gradingModel}
                   onChange={(e) => setGradingModel(e.target.value)}
                   placeholder="e.g. meta-llama/llama-3.1-8b-instruct (optional)"
-                  className="w-72 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-72 px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 />
               ) : (
-                <span className="text-xs text-gray-500 px-2 py-2 max-w-[18rem] leading-snug">
+                <span className="text-xs text-gray-500 dark:text-slate-400 px-2 py-2 max-w-[18rem] leading-snug">
                   Local grading uses default model in server, not configurable here.
                 </span>
               )}
@@ -1646,19 +1646,19 @@ function GradePaper() {
       {/* Region Viewer Modal */}
       {showRegionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in overflow-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden my-4">
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-[95vw] max-h-[90vh] flex flex-col overflow-hidden my-4 border border-gray-200/80 dark:border-slate-700">
+            <div className="p-4 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center bg-gray-50/80 dark:bg-slate-800/90">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">
                   {selectedDocType === 'question'
                     ? 'Crop Question Paper Region'
                     : 'Crop Student Answer Region'}
                 </h3>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-slate-400">
                   Scroll and drag to crop on desired region
                 </p>
                 {selectedDocType === 'question' && (
-                  <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-700">
+                  <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300">
                     <input
                       type="checkbox"
                       checked={autoCleanupEnabled}
@@ -1671,7 +1671,7 @@ function GradePaper() {
               </div>
               <button 
                 onClick={() => handleCloseRegionModal()}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1679,11 +1679,11 @@ function GradePaper() {
               </button>
             </div>
             
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden p-6 bg-gray-50">
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden p-6 bg-gray-50 dark:bg-slate-950/80">
               {loadingRegions ? (
                 <div className="flex flex-col items-center justify-center py-12 flex-1">
                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mb-4"></div>
-                   <p className="text-sm text-gray-500">Loading regions...</p>
+                   <p className="text-sm text-gray-500 dark:text-slate-400">Loading regions...</p>
                 </div>
               ) : (
                 <div className="flex flex-1 min-h-0 overflow-hidden flex-col md:flex-row gap-6">
@@ -1692,7 +1692,7 @@ function GradePaper() {
                     {pages.length > 0 && (
                       <div className="w-full min-w-0 space-y-6">
                         {loadingPageImages ? (
-                          <div className="flex items-center justify-center min-h-[40vh] w-full bg-gray-100 rounded-xl">
+                          <div className="flex items-center justify-center min-h-[40vh] w-full bg-gray-100 dark:bg-slate-800 rounded-xl">
                             <div className="animate-spin rounded-full h-10 w-10 border-2 border-indigo-200 border-t-indigo-600" />
                           </div>
                         ) : (
@@ -1705,7 +1705,7 @@ function GradePaper() {
                               <div
                                 key={pageNum}
                                 data-page={pageNum}
-                                className="relative w-full border border-gray-200 rounded-xl overflow-hidden bg-white cursor-crosshair"
+                                className="relative w-full border border-gray-200 dark:border-slate-600 rounded-xl overflow-hidden bg-white dark:bg-slate-900 cursor-crosshair"
                                 onMouseDown={(e) => {
                                   const wrapper = e.currentTarget
                                   const img = wrapper.querySelector('img')
@@ -1737,8 +1737,8 @@ function GradePaper() {
                                     }}
                                   />
                                 ) : (
-                                  <div className="flex items-center justify-center min-h-[200px] w-full bg-gray-100">
-                                    <span className="text-xs text-gray-400">Page {pageNum}</span>
+                                  <div className="flex items-center justify-center min-h-[200px] w-full bg-gray-100 dark:bg-slate-800">
+                                    <span className="text-xs text-gray-400 dark:text-slate-500">Page {pageNum}</span>
                                   </div>
                                 )}
                                 {/* Crop rectangle in progress (only on this page) */}
@@ -1783,7 +1783,7 @@ function GradePaper() {
                                         >
                                           {/* Question label pill anchored near the left edge of the region */}
                                           <div className="absolute left-1 top-1">
-                                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-white/90 text-emerald-900/80 shadow-sm">
+                                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-white/90 dark:bg-slate-800/95 text-emerald-900/80 dark:text-emerald-300 shadow-sm">
                                               {regionColorMap[r.id]?.label || `Q${regions.findIndex(reg => reg.id === r.id) + 1}`}
                                             </span>
                                           </div>
@@ -1801,8 +1801,8 @@ function GradePaper() {
 
                   {/* Right: Extracted answers (independently scrollable) */}
                   <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
-                    <div className="sticky top-0 z-20 flex items-center gap-2 mb-3 flex-shrink-0 py-2.5 bg-gray-50/92 backdrop-blur-md border-b border-gray-200/70 shadow-sm shadow-gray-900/[0.06]">
-                      <h4 className="text-sm font-semibold text-gray-700">Extracted Text</h4>
+                    <div className="sticky top-0 z-20 flex items-center gap-2 mb-3 flex-shrink-0 py-2.5 bg-gray-50/92 dark:bg-slate-900/92 backdrop-blur-md border-b border-gray-200/70 dark:border-slate-600/70 shadow-sm shadow-gray-900/[0.06] dark:shadow-black/20">
+                      <h4 className="text-sm font-semibold text-gray-700 dark:text-slate-300">Extracted Text</h4>
                       {processingNewCrop && (
                         <span className="inline-flex items-center gap-1 text-xs text-indigo-600">
                           <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
@@ -1814,8 +1814,8 @@ function GradePaper() {
                       )}
                     </div>
                     {regions.length === 0 ? (
-                      <div className="text-center py-12 text-gray-500 bg-white rounded-xl border border-gray-200 border-dashed">
-                        <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <div className="text-center py-12 text-gray-500 dark:text-slate-400 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-600 border-dashed">
+                        <svg className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
                         <p>No regions yet. Draw a box on the page image to create one.</p>
@@ -1851,7 +1851,7 @@ function GradePaper() {
                                 return next
                               })
                             }}
-                            className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
+                            className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-600 p-4 shadow-sm hover:shadow-md dark:hover:shadow-slate-900/50 transition-shadow cursor-grab active:cursor-grabbing"
                           >
                             <div className="flex justify-between items-start mb-3">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -1862,7 +1862,8 @@ function GradePaper() {
                                 </span>
                                 {(() => {
                                   const badgeClass =
-                                    regionColorMap[region.id]?.badge || 'bg-gray-200 text-gray-800'
+                                    regionColorMap[region.id]?.badge ||
+                                    'bg-gray-200 dark:bg-slate-600 text-gray-800 dark:text-slate-200'
                                   // For question paper, keep using the full label (with fallback index)
                                   if (selectedDocType === 'question') {
                                     return (
@@ -1940,7 +1941,7 @@ function GradePaper() {
                                 </button>
                               </div>
                             </div>
-                            <div className="bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="bg-gray-50 dark:bg-slate-800/50 rounded-lg border border-gray-200 dark:border-slate-600">
                               {selectedDocType === 'question' && (() => {
                                 const label = region.question_number || regionColorMap[region.id]?.label || `Q${index + 1}`
                                 const { main, part, sub } = parseQuestionComponents(label)
@@ -2073,7 +2074,7 @@ function GradePaper() {
 
                                         handleChange(nextMain, nextPart, nextSub)
                                       }}
-                                      className="px-1.5 py-1 text-xs border border-gray-200 rounded-md bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                      className="px-1.5 py-1 text-xs border border-gray-200 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                     >
                                       {MAIN_QUESTION_OPTIONS.map((qNo) => {
                                         const disabled = qNo < maxMainSoFar
@@ -2127,7 +2128,7 @@ function GradePaper() {
 
                                         handleChange(effectiveMain, nextPart, nextSub)
                                       }}
-                                      className="px-1.5 py-1 text-xs border border-gray-200 rounded-md bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                      className="px-1.5 py-1 text-xs border border-gray-200 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                     >
                                       {PART_OPTIONS.map((pOpt) => {
                                         const disabled = partOrder(pOpt) < maxPartSoFar && pOpt !== '-'
@@ -2150,7 +2151,7 @@ function GradePaper() {
                                         const nextSub = e.target.value
                                         handleChange(effectiveMain, part || '-', nextSub)
                                       }}
-                                      className="px-1.5 py-1 text-xs border border-gray-200 rounded-md bg-white focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                                      className="px-1.5 py-1 text-xs border border-gray-200 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                                     >
                                       {SUBPART_OPTIONS.map((sOpt) => {
                                         const disabled =
@@ -2193,7 +2194,7 @@ function GradePaper() {
                                     handleUpdateRegionText(region.id, value)
                                   }
                                 }}
-                                className="w-full min-h-[80px] px-3 pb-3 pt-1 text-sm text-gray-800 font-mono whitespace-pre-wrap border-0 bg-transparent focus:ring-2 focus:ring-indigo-500/30 focus:outline-none rounded-b-lg resize-y"
+                                className="w-full min-h-[80px] px-3 pb-3 pt-1 text-sm text-gray-800 dark:text-slate-200 font-mono whitespace-pre-wrap border-0 bg-transparent focus:ring-2 focus:ring-indigo-500/30 focus:outline-none rounded-b-lg resize-y"
                                 placeholder="No text extracted. Use Re-run OCR or type here."
                               />
                             </div>
@@ -2206,9 +2207,9 @@ function GradePaper() {
               )}
             </div>
             
-            <div className="p-4 border-t border-gray-100 bg-white flex items-center justify-end gap-4">
+            <div className="p-4 border-t border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-end gap-4">
               {selectedDocType === 'question' && (
-                <span className="text-sm font-medium text-gray-700">
+                <span className="text-sm font-medium text-gray-700 dark:text-slate-300">
                   Total marks:{' '}
                   {(regions || []).reduce(
                     (sum, r) => sum + (Number.isFinite(r.marks) ? Number(r.marks) : 0),

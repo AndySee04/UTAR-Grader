@@ -13,6 +13,12 @@
       content="UTAR Grader: Automated exam paper grading system using AI-powered OCR and LLM for teachers."
     />
     <title>UTAR Grader | AI Exam Grading</title>
+    <script>
+      try {
+        if (localStorage.getItem('utar-grader-theme') === 'dark')
+          document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

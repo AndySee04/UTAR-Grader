@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import ThemeToggle from '../components/ThemeToggle'
 
 function Login() {
   const [email, setEmail] = useState('')
@@ -29,7 +30,10 @@ function Login() {
   }
 
   return (
-    <div className="auth-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="auth-bg relative flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle variant="onHero" />
+      </div>
       <div className="relative z-10 sm:mx-auto sm:w-full sm:max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
@@ -44,13 +48,13 @@ function Login() {
 
         {/* Card */}
         <div className="auth-card py-8 px-6 sm:px-10">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-slate-100 mb-6">
             Sign in to your account
           </h2>
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
-              <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm animate-fade-in">
+              <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm animate-fade-in">
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -59,7 +63,7 @@ function Login() {
             )}
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">
                 Email address
               </label>
               <input
@@ -74,7 +78,7 @@ function Login() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">
                 Password
               </label>
               <input
@@ -106,8 +110,11 @@ function Login() {
           </form>
 
           <div className="mt-6 text-center">
-            <span className="text-sm text-gray-500">Don't have an account? </span>
-            <Link to="/register" className="text-sm font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+            <span className="text-sm text-gray-500 dark:text-slate-400">Don't have an account? </span>
+            <Link
+              to="/register"
+              className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors"
+            >
               Register
             </Link>
           </div>

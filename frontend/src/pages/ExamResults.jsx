@@ -87,7 +87,7 @@ function ExamResults() {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
+      <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm">
         {error}
       </div>
     )
@@ -98,27 +98,27 @@ function ExamResults() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
-          <Link to="/exams" className="text-sm text-indigo-600 hover:text-indigo-500 flex items-center gap-1 mb-2 transition-colors">
+          <Link to="/exams" className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 flex items-center gap-1 mb-2 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back to Exams
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">{results?.exam_name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">{results?.exam_name}</h1>
         </div>
 
         {/* Stats cards */}
         <div className="flex gap-3">
-          <div className="bg-indigo-50/50 rounded-xl px-4 py-2 border border-indigo-100 text-center">
+          <div className="bg-indigo-50/50 dark:bg-indigo-950/40 rounded-xl px-4 py-2 border border-indigo-100 dark:border-indigo-900/50 text-center">
             <p className="text-xs font-medium text-indigo-500 uppercase tracking-wide">Graded</p>
-            <p className="text-lg font-bold text-indigo-700">
+            <p className="text-lg font-bold text-indigo-700 dark:text-indigo-300">
               {results?.graded_students}/{results?.total_students}
             </p>
           </div>
           {results?.average_percentage != null && (
-            <div className="bg-emerald-50/50 rounded-xl px-4 py-2 border border-emerald-100 text-center">
+            <div className="bg-emerald-50/50 dark:bg-emerald-950/40 rounded-xl px-4 py-2 border border-emerald-100 dark:border-emerald-900/50 text-center">
               <p className="text-xs font-medium text-emerald-500 uppercase tracking-wide">Average</p>
-              <p className="text-lg font-bold text-emerald-700">
+              <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
                 {results.average_percentage.toFixed(1)}%
               </p>
             </div>
@@ -129,40 +129,40 @@ function ExamResults() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Student List */}
         <div className="card-flat overflow-hidden">
-          <div className="p-4 bg-gray-50/80 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-700">Students</h2>
+          <div className="p-4 bg-gray-50/80 dark:bg-slate-800/80 border-b border-gray-100 dark:border-slate-700">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-slate-300">Students</h2>
           </div>
-          <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
+          <div className="divide-y divide-gray-50 dark:divide-slate-800 max-h-[500px] overflow-y-auto">
             {results?.students?.map((student) => (
               <div
                 key={student.document_id}
                 onClick={() => setSelectedStudent(student)}
                 className={`p-4 cursor-pointer transition-all duration-150 ${
                   selectedStudent?.document_id === student.document_id
-                    ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
-                    : 'hover:bg-gray-50/80 border-l-2 border-l-transparent'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-l-2 border-l-indigo-500'
+                    : 'hover:bg-gray-50/80 dark:hover:bg-slate-800/50 border-l-2 border-l-transparent'
                 }`}
               >
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-semibold ${
-                      student.percentage >= 80 ? 'bg-emerald-100 text-emerald-700' :
-                      student.percentage >= 50 ? 'bg-amber-100 text-amber-700' :
-                      'bg-red-100 text-red-700'
+                      student.percentage >= 80 ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300' :
+                      student.percentage >= 50 ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300' :
+                      'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300'
                     }`}>
                       {(student.student_name || '?')[0].toUpperCase()}
                     </div>
-                    <span className="font-medium text-sm text-gray-800">{student.student_name || 'Unknown'}</span>
+                    <span className="font-medium text-sm text-gray-800 dark:text-slate-200">{student.student_name || 'Unknown'}</span>
                   </div>
                   <div className="text-right">
                     <span className={`text-sm font-bold ${
-                      student.percentage >= 80 ? 'text-emerald-600' :
-                      student.percentage >= 50 ? 'text-amber-600' :
-                      'text-red-600'
+                      student.percentage >= 80 ? 'text-emerald-600 dark:text-emerald-400' :
+                      student.percentage >= 50 ? 'text-amber-600 dark:text-amber-400' :
+                      'text-red-600 dark:text-red-400'
                     }`}>
                       {student.percentage.toFixed(1)}%
                     </span>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-400 dark:text-slate-500">
                       {student.total_score.toFixed(1)}/{student.total_max_marks.toFixed(1)}
                     </p>
                   </div>
@@ -176,13 +176,13 @@ function ExamResults() {
         <div className="lg:col-span-2 card-flat overflow-hidden">
           {selectedStudent ? (
             <>
-              <div className="p-4 bg-gray-50/80 border-b border-gray-100 flex justify-between items-center">
+              <div className="p-4 bg-gray-50/80 dark:bg-slate-800/80 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
                 <div>
-                  <h2 className="font-semibold text-gray-900">{selectedStudent.student_name}</h2>
-                  <p className="text-sm text-gray-500">
+                  <h2 className="font-semibold text-gray-900 dark:text-slate-100">{selectedStudent.student_name}</h2>
+                  <p className="text-sm text-gray-500 dark:text-slate-400">
                     {selectedStudent.total_score.toFixed(1)} / {selectedStudent.total_max_marks.toFixed(1)} marks
                     <span className={`ml-2 font-semibold ${
-                      selectedStudent.percentage >= 50 ? 'text-emerald-600' : 'text-red-600'
+                      selectedStudent.percentage >= 50 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                     }`}>
                       ({selectedStudent.percentage.toFixed(1)}%)
                     </span>
@@ -200,14 +200,14 @@ function ExamResults() {
               </div>
               <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
                 {selectedStudent.grades.map((grade, i) => (
-                  <div key={i} className="border border-gray-100 rounded-xl p-4 hover:border-gray-200 transition-colors animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
+                  <div key={i} className="border border-gray-100 dark:border-slate-700 rounded-xl p-4 hover:border-gray-200 dark:hover:border-slate-600 transition-colors animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md">
+                        <span className="text-xs font-semibold bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 px-2 py-0.5 rounded-md">
                           {grade.question_number}
                         </span>
                         {grade.is_overridden && (
-                          <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md flex items-center gap-1">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                             </svg>
@@ -224,16 +224,16 @@ function ExamResults() {
                               type="number"
                               value={editScore}
                               onChange={(e) => setEditScore(e.target.value)}
-                              className="w-16 px-2 py-1 border border-indigo-300 rounded-lg text-sm text-right focus:ring-indigo-500"
+                              className="w-16 px-2 py-1 border border-indigo-300 dark:border-indigo-600 rounded-lg text-sm text-right bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-indigo-500"
                               step="0.5"
                               min="0"
                               max={grade.max_marks}
                               autoFocus
                             />
-                            <span className="text-sm text-gray-400">/ {grade.max_marks?.toFixed(1)}</span>
+                            <span className="text-sm text-gray-400 dark:text-slate-500">/ {grade.max_marks?.toFixed(1)}</span>
                             <button
                               onClick={() => handleOverrideScore(grade.id)}
-                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                              className="p-1 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded transition-colors"
                               title="Save"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -242,7 +242,7 @@ function ExamResults() {
                             </button>
                             <button
                               onClick={() => { setEditingGrade(null); setEditScore('') }}
-                              className="p-1 text-gray-400 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1 text-gray-400 dark:text-slate-500 hover:bg-gray-100 dark:hover:bg-slate-800 rounded transition-colors"
                               title="Cancel"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -253,13 +253,13 @@ function ExamResults() {
                         ) : (
                           <div className="flex items-center gap-2">
                             <span className={`text-sm font-bold ${
-                              (grade.score / grade.max_marks) >= 0.5 ? 'text-emerald-600' : 'text-red-600'
+                              (grade.score / grade.max_marks) >= 0.5 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                             }`}>
                               {grade.score?.toFixed(1)} / {grade.max_marks?.toFixed(1)}
                             </span>
                             <button
                               onClick={() => { setEditingGrade(grade.id); setEditScore(String(grade.score || 0)) }}
-                              className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-all"
+                              className="p-1 text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded transition-all"
                               title="Override score"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -272,13 +272,13 @@ function ExamResults() {
                     </div>
 
                     {grade.question_text && (
-                      <p className="text-sm text-gray-600 mb-1 font-medium">
+                      <p className="text-sm text-gray-600 dark:text-slate-300 mb-1 font-medium">
                         {grade.question_text}
                       </p>
                     )}
 
                     {grade.answer_scheme && (
-                      <p className="text-xs text-gray-500 mb-1">
+                      <p className="text-xs text-gray-500 dark:text-slate-400 mb-1">
                         <span className="font-semibold uppercase tracking-wide">Answer guide:</span>
                         <br />
                         <span className="whitespace-pre-wrap">
@@ -288,22 +288,22 @@ function ExamResults() {
                     )}
 
                     {grade.student_answer && (
-                      <div className="mb-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 mb-0.5">
+                      <div className="mb-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-800/50 px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-slate-500 mb-0.5">
                           Student answer
                         </p>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                        <p className="text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap">
                           {grade.student_answer}
                         </p>
                       </div>
                     )}
 
                     {(grade.feedback != null) && (
-                      <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-3 py-2">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-indigo-500 mb-0.5">
+                      <div className="rounded-lg border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/30 px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-400 mb-0.5">
                           AI feedback
                         </p>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                        <p className="text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap">
                           {(grade.feedback || 'No AI feedback returned for this answer.').trim()}
                         </p>
                       </div>
@@ -313,7 +313,7 @@ function ExamResults() {
               </div>
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-slate-500">
               <svg className="w-12 h-12 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>

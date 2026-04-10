@@ -199,8 +199,8 @@ function ManageAccount() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Account Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage your profile and preferences</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Account Settings</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Manage your profile and preferences</p>
       </div>
 
       {/* Profile Section */}
@@ -210,7 +210,7 @@ function ManageAccount() {
             <button
               type="button"
               onClick={() => setPhotoMenuOpen((open) => !open)}
-              className="w-16 h-16 rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center hover:ring-2 hover:ring-indigo-200 transition-all"
+              className="w-16 h-16 rounded-2xl overflow-hidden border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 flex items-center justify-center hover:ring-2 hover:ring-indigo-200 dark:hover:ring-indigo-700 transition-all"
               title="Profile picture options"
             >
               {user?.profile_picture_url ? (
@@ -221,7 +221,7 @@ function ManageAccount() {
                 />
               ) : (
                 <svg
-                  className="w-10 h-10 text-gray-500"
+                  className="w-10 h-10 text-gray-500 dark:text-slate-400"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -237,12 +237,12 @@ function ManageAccount() {
               )}
             </button>
             {photoMenuOpen && (
-              <div className="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-20 w-52 rounded-xl border border-gray-200 bg-white shadow-lg p-1.5">
+              <div className="absolute left-1/2 top-full -translate-x-1/2 mt-2 z-20 w-52 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-lg p-1.5">
                 <button
                   type="button"
                   onClick={handlePickPhoto}
                   disabled={uploadingPhoto}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-60"
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-slate-200 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-60"
                 >
                   Upload Photo
                 </button>
@@ -250,7 +250,7 @@ function ManageAccount() {
                   type="button"
                   onClick={handleRemovePhoto}
                   disabled={!user?.profile_picture_url}
-                  className="w-full text-left px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                  className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-40 disabled:hover:bg-transparent"
                 >
                   Remove Current Photo
                 </button>
@@ -258,8 +258,8 @@ function ManageAccount() {
             )}
           </div>
           <div>
-            <h2 className="font-semibold text-gray-900">Profile Information</h2>
-            <p className="text-sm text-gray-500">Update your display name and profile picture</p>
+            <h2 className="font-semibold text-gray-900 dark:text-slate-100">Profile Information</h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400">Update your display name and profile picture</p>
           </div>
         </div>
         <input
@@ -271,18 +271,18 @@ function ManageAccount() {
         />
         <form onSubmit={handleUpdateProfile} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Email</label>
             <input
               type="email"
               value={user?.email || ''}
               disabled
-              className="input-field bg-gray-50 text-gray-500 cursor-not-allowed"
+              className="input-field bg-gray-50 dark:bg-slate-800/80 text-gray-500 dark:text-slate-400 cursor-not-allowed"
             />
-            <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Email cannot be changed</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Display Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Display Name</label>
             <input
               type="text"
               value={name}
@@ -312,9 +312,9 @@ function ManageAccount() {
 
       {cropModalOpen && selectedImageSrc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl p-4">
-            <h3 className="text-base font-semibold text-gray-900">Crop Profile Photo</h3>
-            <p className="text-xs text-gray-500 mt-1">Adjust zoom and position your photo.</p>
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 shadow-2xl p-4 border border-gray-100 dark:border-slate-700">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100">Crop Profile Photo</h3>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Adjust zoom and position your photo.</p>
 
             <div className="relative mt-4 h-72 w-full rounded-xl overflow-hidden bg-gray-900">
               <Cropper
@@ -331,7 +331,7 @@ function ManageAccount() {
             </div>
 
             <div className="mt-4">
-              <label className="block text-xs font-medium text-gray-600 mb-2">Zoom</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-2">Zoom</label>
               <input
                 type="range"
                 min={1}
@@ -347,7 +347,7 @@ function ManageAccount() {
               <button
                 type="button"
                 onClick={handleCropCancel}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-800 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700"
               >
                 Cancel
               </button>
@@ -367,19 +367,19 @@ function ManageAccount() {
       {/* Password Section */}
       <div className="card p-6">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center">
-            <svg className="w-6 h-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-slate-800 flex items-center justify-center">
+            <svg className="w-6 h-6 text-gray-500 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
           <div>
-            <h2 className="font-semibold text-gray-900">Change Password</h2>
-            <p className="text-sm text-gray-500">Update your security credentials</p>
+            <h2 className="font-semibold text-gray-900 dark:text-slate-100">Change Password</h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400">Update your security credentials</p>
           </div>
         </div>
         <form onSubmit={handleChangePassword} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Current Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Current Password</label>
             <input
               type="password"
               value={currentPassword}
@@ -391,7 +391,7 @@ function ManageAccount() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">New Password</label>
             <input
               type="password"
               value={newPassword}
@@ -400,11 +400,11 @@ function ManageAccount() {
               className="input-field"
               placeholder="••••••••"
             />
-            <p className="text-xs text-gray-400 mt-1">Minimum 6 characters</p>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Minimum 6 characters</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirm New Password</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">Confirm New Password</label>
             <input
               type="password"
               value={confirmPassword}
@@ -426,19 +426,19 @@ function ManageAccount() {
       </div>
 
       {/* Danger Zone */}
-      <div className="card p-6 border-2 border-red-100">
+      <div className="card p-6 border-2 border-red-100 dark:border-red-900/50">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-red-50 dark:bg-red-950/40 flex items-center justify-center">
             <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
           <div>
-            <h2 className="font-semibold text-red-600">Danger Zone</h2>
-            <p className="text-sm text-gray-500">Irreversible account actions</p>
+            <h2 className="font-semibold text-red-600 dark:text-red-400">Danger Zone</h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400">Irreversible account actions</p>
           </div>
         </div>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
           Once you delete your account, there is no going back. All your exams, grades, and data will be permanently deleted.
         </p>
         <button
@@ -454,19 +454,19 @@ function ManageAccount() {
 
       {deleteModalOpen && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/55 backdrop-blur-[1px] p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-100">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-gray-100 dark:border-slate-700">
             <div className="p-5">
-              <h3 className="text-lg font-semibold text-gray-900">Delete Account?</h3>
-              <p className="mt-2 text-sm text-gray-600">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Delete Account?</h3>
+              <p className="mt-2 text-sm text-gray-600 dark:text-slate-400">
                 Are you sure you want to delete your account? This action cannot be undone.
                 All your exams, grades, and uploaded files will be permanently deleted.
               </p>
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/80 rounded-b-2xl">
               <button
                 onClick={() => setDeleteModalOpen(false)}
                 disabled={deletingAccount}
-                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-white disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-white dark:hover:bg-slate-700 disabled:opacity-50"
               >
                 Cancel
               </button>
