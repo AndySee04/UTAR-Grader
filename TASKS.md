@@ -252,6 +252,13 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Page-level dark pass: `Dashboard`, `GradePaper`, `ExamList`, `ExamResults`, `ManageAccount`, auth pages, loading spinner in `App.jsx`
 - [x] Dark mode readability: marking guide footer — **“N questions”** and **“Total: … marks”** pill (slate chip + high-contrast text; no light-on-white)
 
+### Housekeeping & dead code (safe removals)
+
+- [x] Audit unused Python/JS helpers (grep + vulture-style review); documented larger optional deletions (e.g. unused `PDFService` methods) without removing live API routes
+- [x] `processing.py`: drop unused `base64` / `subprocess` imports; `for region in regions` in background OCR loop (no unused index)
+- [x] `schemas/marking_guide.py` + `routes/marking_guide.py`: remove unused `MarkingGuideListResponse`
+- [x] `frontend/src/services/api.js`: remove unused wrappers — `authAPI.logout`, `processingAPI.processExam` / `detectRegions` / `checkOCRHealth` / `checkLLMHealth`, `gradingAPI.getStudentGrades` / `getProgress` (backend endpoints unchanged; re-add client helpers if UI needs them)
+
 ### Files touched (high level)
 
 - [x] `backend/main.py`, `backend/model_loader.py`, `backend/config.py`
@@ -380,7 +387,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 ## Current Progress
 
 **Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
-**Last Updated**: 2026-04-17
+**Last Updated**: 2026-04-18
 
 ### Priority TODOs
 

@@ -2,11 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body, BackgroundT
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import base64
 import io
 import sys
 import os
-import subprocess
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -370,7 +368,7 @@ def process_exam_background(exam_id: str, db: Session):
                     img = pdf_service.get_page_as_image(doc.file_path, pg)
                     regions = cv_service.detect_text_regions(img)
                     print(f"[Processing]   Page {pg}/{page_count} — detected {len(regions)} region(s), running OCR...", flush=True)
-                    for ri, region in enumerate(regions):
+                    for region in regions:
                         cropped = cv_service.crop_region(img, region)
                         # Use printed-text model for question paper pages, handwriting model for others
                         ocr = ocr_service_printed if doc.doc_type == "question_paper" else ocr_service

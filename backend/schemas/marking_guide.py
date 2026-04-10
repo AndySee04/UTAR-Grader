@@ -35,18 +35,6 @@ class MarkingGuideResponse(BaseModel):
         from_attributes = True
 
 
-class MarkingGuideListResponse(BaseModel):
-    id: str
-    question_number: str
-    question_text: Optional[str]
-    question_type: Optional[str]
-    max_marks: Optional[float]
-    is_modified: bool
-
-    class Config:
-        from_attributes = True
-
-
 class GenerateGuideRequest(BaseModel):
     use_llm: bool = True  # If false, just structure from OCR text
 

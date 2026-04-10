@@ -35,7 +35,6 @@ export const authAPI = {
   register: (data) => api.post("/auth/register", data),
   login: (data) => api.post("/auth/login", data),
   getMe: () => api.get("/auth/me"),
-  logout: () => api.post("/auth/logout"),
 };
 
 // Exams
@@ -80,18 +79,11 @@ export const documentsAPI = {
 
 // Processing
 export const processingAPI = {
-  processExam: (examId) => api.post(`/exams/${examId}/process`),
-  detectRegions: (docId, pageNumber) =>
-    api.post(`/documents/${docId}/detect-regions`, null, {
-      params: { page_number: pageNumber },
-    }),
   runOCR: (regionId) => api.post(`/regions/${regionId}/ocr`),
   deleteRegion: (regionId) => api.delete(`/regions/${regionId}`),
   updateRegionText: (regionId, data) =>
     api.patch(`/regions/${regionId}`, data),
   cleanupText: (regionId) => api.post(`/regions/${regionId}/cleanup`),
-  checkOCRHealth: () => api.get("/health/ocr"),
-  checkLLMHealth: () => api.get("/health/llm"),
 };
 
 // Marking Guide
@@ -110,10 +102,7 @@ export const gradingAPI = {
   start: (examId, payload = {}) =>
     api.post(`/exams/${examId}/grade`, { process_all: true, ...payload }),
   getGrades: (examId) => api.get(`/exams/${examId}/grades`),
-  getStudentGrades: (examId, docId) =>
-    api.get(`/exams/${examId}/grades/${docId}`),
   overrideGrade: (gradeId, data) => api.put(`/grades/${gradeId}`, data),
-  getProgress: (examId) => api.get(`/exams/${examId}/progress`),
 };
 
 // Reports

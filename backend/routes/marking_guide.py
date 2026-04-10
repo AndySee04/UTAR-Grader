@@ -17,7 +17,7 @@ from models.marking_guide import MarkingGuide
 from models.llm_response import LLMResponse
 from schemas.marking_guide import (
     MarkingGuideCreate, MarkingGuideUpdate, MarkingGuideResponse,
-    MarkingGuideListResponse, GenerateGuideRequest, GenerateGuideResponse
+    GenerateGuideRequest, GenerateGuideResponse
 )
 from utils.auth import get_current_user
 from services.llm_service import llm_service
