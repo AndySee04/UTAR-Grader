@@ -67,15 +67,6 @@ function StepIcon({ name, className = 'w-5 h-5' }) {
 }
 
 function GradePaper() {
-  const normalizeQuestionType = (value) => {
-    const raw = String(value || '').trim().toLowerCase()
-    if (!raw) return 'structured'
-    if (raw === 'mcq' || raw === 'structured' || raw === 'open_ended') return raw
-    if (raw === 'short_answer' || raw === 'calculation') return 'structured'
-    if (raw === 'essay') return 'open_ended'
-    return 'structured'
-  }
-
   const [step, setStep] = useState(0)
   const [examId, setExamId] = useState(null)
   const [examName, setExamName] = useState('')
@@ -1020,10 +1011,12 @@ function GradePaper() {
     try {
       const provider = (gradingProvider || 'ollama').trim()
       const model = (gradingModel || '').trim()
-      await gradingAPI.start(examId, {
-        provider,
-        model: model || undefined
-      })
+      const payload = { provider }
+      // OpenRouter only; Ollama always uses server OLLAMA_MODEL — never send model.
+      if (provider === 'openrouter' && model) {
+        payload.model = model
+      }
+      await gradingAPI.start(examId, payload)
       toast.success('Grading started! Check the Exam List for progress.')
       navigate('/exams')
     } catch (err) {
@@ -1493,7 +1486,7 @@ function GradePaper() {
                       </td>
                       <td className="px-4 py-3">
                         <select
-                          value={normalizeQuestionType(q.question_type)}
+                          value={q.question_type || 'structured'}
                           onChange={(e) => updateGuideQuestion(i, 'question_type', e.target.value)}
                           className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
                         >
@@ -1587,22 +1580,32 @@ function GradePaper() {
                 Total: {markingGuide.reduce((sum, q) => sum + (q.max_marks || 0), 0)} marks
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <select
                 value={gradingProvider}
-                onChange={(e) => setGradingProvider(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setGradingProvider(v)
+                  if (v === 'ollama') setGradingModel('')
+                }}
                 className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               >
                 <option value="ollama">Ollama (local)</option>
                 <option value="openrouter">OpenRouter</option>
               </select>
-              <input
-                type="text"
-                value={gradingModel}
-                onChange={(e) => setGradingModel(e.target.value)}
-                placeholder={gradingProvider === 'openrouter' ? 'e.g. meta-llama/llama-3.1-8b-instruct' : 'Optional model override'}
-                className="w-72 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              />
+              {gradingProvider === 'openrouter' ? (
+                <input
+                  type="text"
+                  value={gradingModel}
+                  onChange={(e) => setGradingModel(e.target.value)}
+                  placeholder="e.g. meta-llama/llama-3.1-8b-instruct (optional)"
+                  className="w-72 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              ) : (
+                <span className="text-xs text-gray-500 px-2 py-2 max-w-[18rem] leading-snug">
+                  Local grading uses default model in server, not configurable here.
+                </span>
+              )}
               <button
                 onClick={handleStartGrading}
                 disabled={loading}

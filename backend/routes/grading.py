@@ -84,6 +84,9 @@ async def start_grading(
     if provider not in {"ollama", "openrouter"}:
         raise HTTPException(status_code=400, detail="Invalid provider. Use 'ollama' or 'openrouter'.")
     model = (request.model or "").strip() or None
+    if provider == "ollama":
+        # Local Ollama: model comes only from OLLAMA_MODEL env — never from the client.
+        model = None
 
     # Update exam status
     exam.status = "grading"
@@ -106,6 +109,9 @@ async def grade_exam_background(exam_id: str, provider: str = "ollama", model: s
     """Background task to grade all student papers."""
     from database import SessionLocal
     db = SessionLocal()
+
+    if (provider or "").strip().lower() == "ollama":
+        model = None
     
     try:
         # Get marking guide

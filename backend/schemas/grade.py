@@ -56,6 +56,7 @@ class ExamGradingSummary(BaseModel):
 class StartGradingRequest(BaseModel):
     process_all: bool = True  # If false, only grade ungraded
     provider: str = "ollama"
+    # Ignored when provider is ollama (server uses OLLAMA_MODEL from env only).
     model: Optional[str] = None
 
 
