@@ -9,14 +9,14 @@ from .cv_service import cv_service, TextRegion
 class OCRService:
     """Service for OCR using TrOCR model."""
     
-    def __init__(self, model_name: str = "microsoft/trocr-base-handwritten"):
+    def __init__(self, model_name: str = "microsoft/trocr-large-handwritten"):
         """
         Initialize TrOCR model.
         
         Args:
             model_name: HuggingFace model name. Options:
-                - microsoft/trocr-base-handwritten (default, for handwriting)
-                - microsoft/trocr-large-handwritten (more accurate, slower)
+                - microsoft/trocr-large-handwritten (default, for handwriting; heavier/slower)
+                - microsoft/trocr-base-handwritten (lighter, faster)
                 - microsoft/trocr-base-printed (for printed text)
         """
         self.model_name = model_name
