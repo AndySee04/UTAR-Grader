@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Body, BackgroundTasks, Query
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -144,10 +144,14 @@ async def detect_regions(
 @router.post("/regions/{region_id}/ocr")
 async def run_ocr_on_region(
     region_id: str,
+    use_ollama_vision: bool = Query(
+        False,
+        description="If true (student_answer only), transcribe the crop with Llama 3.2 Vision via Ollama instead of TrOCR.",
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Run OCR on a specific region."""
+    """Run OCR on a region. Default: TrOCR. Refresh with vision: use_ollama_vision=true for student answers."""
     region = db.query(ExtractedText).join(Document).join(Exam).filter(
         ExtractedText.id == region_id,
         Exam.user_id == current_user.id
@@ -188,24 +192,49 @@ async def run_ocr_on_region(
         else:
             cropped = img
         
-        # Run OCR - use printed-text model for question papers, handwriting model otherwise
-        ocr = ocr_service_printed if document.doc_type == "question_paper" else ocr_service
-        text, line_details = ocr.extract_text_from_image(cropped)
-        heights = [
-            (d.get("region", {}) or {}).get("height")
-            for d in (line_details or [])
-            if isinstance(d, dict)
-        ]
-        heights = [h for h in heights if isinstance(h, (int, float))]
-        avg_line_height = (sum(heights) / len(heights)) if heights else 0.0
-        print(
-            "[OCR] "
-            f"region_id={region.id} "
-            f"doc_type={document.doc_type} "
-            f"line_count={len(line_details)} "
-            f"avg_line_height={avg_line_height:.2f}",
-            flush=True
-        )
+        if use_ollama_vision:
+            if document.doc_type != "student_answer":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ollama vision OCR is only supported for student_answer regions.",
+                )
+            try:
+                vision_res = await llm_service.transcribe_answer_image(cropped)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Ollama vision transcription failed: {str(e)}",
+                )
+            text = (vision_res.raw_response or "").strip()
+            print(
+                "[OCR vision] "
+                f"region_id={region.id} "
+                f"model={vision_res.model_used} "
+                f"chars={len(text)}",
+                flush=True,
+            )
+            line_details = []
+            avg_line_height = 0.0
+        else:
+            ocr = ocr_service_printed if document.doc_type == "question_paper" else ocr_service
+            text, line_details = ocr.extract_text_from_image(cropped)
+            heights = [
+                (d.get("region", {}) or {}).get("height")
+                for d in (line_details or [])
+                if isinstance(d, dict)
+            ]
+            heights = [h for h in heights if isinstance(h, (int, float))]
+            avg_line_height = (sum(heights) / len(heights)) if heights else 0.0
+            print(
+                "[OCR] "
+                f"region_id={region.id} "
+                f"doc_type={document.doc_type} "
+                f"line_count={len(line_details)} "
+                f"avg_line_height={avg_line_height:.2f}",
+                flush=True,
+            )
         
         # Update region
         region.raw_text = text
@@ -215,8 +244,11 @@ async def run_ocr_on_region(
             "region_id": region_id,
             "raw_text": text,
             "line_count": len(line_details),
-            "avg_line_height": avg_line_height
+            "avg_line_height": avg_line_height,
+            "engine": "ollama_vision" if use_ollama_vision else "trocr",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 

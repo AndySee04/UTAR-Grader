@@ -882,7 +882,11 @@ function GradePaper() {
   const handleRunOcr = async (regionId) => {
     setRunningOcrFor(regionId)
     try {
-      const res = await processingAPI.runOCR(regionId)
+      const useVision = selectedDocType === 'student_answer'
+      const res = await processingAPI.runOCR(
+        regionId,
+        useVision ? { use_ollama_vision: true } : {}
+      )
       const target = regions.find((r) => r.id === regionId)
       const newText = res.data?.raw_text ?? res.data?.text ?? target?.raw_text
       const { marks, cleanedText } = extractMarksAndClean(newText || '')
@@ -900,7 +904,11 @@ function GradePaper() {
             }
           : r
       )))
-      toast.success('OCR ran successfully')
+      toast.success(
+        useVision && res.data?.engine === 'ollama_vision'
+          ? 'Text extracted with Llama 3.2 Vision'
+          : 'OCR ran successfully'
+      )
     } catch (err) {
       toast.error('Failed to run OCR for this region')
     } finally {
@@ -1905,7 +1913,11 @@ function GradePaper() {
                                   onClick={() => handleRunOcr(region.id)}
                                   disabled={runningOcrFor === region.id}
                                   className="text-xs font-medium px-2 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50"
-                                  title="Re-run OCR"
+                                  title={
+                                    selectedDocType === 'student_answer'
+                                      ? 'Re-extract with Llama 3.2 Vision (OLLAMA_VISION_MODEL)'
+                                      : 'Re-run OCR (TrOCR)'
+                                  }
                                 >
                                   {runningOcrFor === region.id ? (
                                     <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">

@@ -1,6 +1,8 @@
 import httpx
 import json
 import time
+import base64
+import io
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 import sys
@@ -12,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config import (
     OLLAMA_BASE_URL,
     OLLAMA_MODEL,
+    OLLAMA_VISION_MODEL,
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     OPENROUTER_MODEL,
@@ -170,6 +173,189 @@ class LLMService:
             model_used=self.model,
             processing_time_ms=processing_time,
             tokens_used=result.get("eval_count")
+        )
+
+    async def _call_ollama_vision(
+        self,
+        prompt: str,
+        pil_image: Any,
+        *,
+        model: str,
+        system_prompt: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> LLMResponse:
+        """Call Ollama /api/chat with a single image (base64 PNG). Requires a vision-capable model."""
+        from PIL import Image as PILImage
+
+        start_time = time.time()
+        buf = io.BytesIO()
+        rgb = pil_image.convert("RGB")
+        max_side = int(os.getenv("OLLAMA_VISION_MAX_SIDE", "1280"))
+        if max(rgb.width, rgb.height) > max_side:
+            rgb = rgb.copy()
+            try:
+                resample = PILImage.Resampling.LANCZOS
+            except AttributeError:
+                resample = PILImage.LANCZOS
+            rgb.thumbnail((max_side, max_side), resample)
+
+        rgb.save(buf, format="PNG", optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+        messages: List[Dict[str, Any]] = [
+            {"role": "user", "content": prompt, "images": [b64]},
+        ]
+
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": 0.0,
+                "num_predict": 2048,
+            },
+        }
+        if system_prompt and system_prompt.strip():
+            payload["system"] = system_prompt.strip()
+
+        if self.debug:
+            try:
+                safe = {
+                    "model": payload.get("model"),
+                    "system": payload.get("system"),
+                    "stream": payload.get("stream"),
+                    "options": payload.get("options"),
+                    "messages": [
+                        {
+                            **{k: v for k, v in m.items() if k != "images"},
+                            "images": [
+                                f"<{len((m.get('images') or [''])[0])} base64 chars>"
+                            ]
+                            if m.get("images")
+                            else [],
+                        }
+                        for m in messages
+                    ],
+                }
+                self._dbg(
+                    "Vision request payload (api/chat)",
+                    json.dumps(safe, indent=2, ensure_ascii=False),
+                )
+            except Exception:
+                pass
+
+        to = timeout or max(self.timeout, 180.0)
+        async with httpx.AsyncClient(timeout=to) as client:
+            response = await client.post(f"{self.base_url}/api/chat", json=payload)
+            if response.status_code >= 400:
+                try:
+                    body = response.json()
+                    err = body.get("error") or body.get("message") or response.text
+                except Exception:
+                    err = (response.text or "")[:4000]
+                raise RuntimeError(f"Ollama vision HTTP {response.status_code}: {err}")
+            result = response.json()
+
+        processing_time = int((time.time() - start_time) * 1000)
+        raw_out = result.get("message", {}).get("content", "")
+
+        if self.debug:
+            self._dbg("Vision raw response content", raw_out)
+
+        return LLMResponse(
+            raw_response=(raw_out or "").strip(),
+            parsed_response=None,
+            model_used=result.get("model") or model,
+            processing_time_ms=processing_time,
+            tokens_used=result.get("eval_count"),
+        )
+
+    def _parse_vision_corrected_text(self, raw: str) -> tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Expect {"corrected_text":"..."}. Reject checklist-style JSON (type / *_check keys).
+        """
+        raw_stripped = (raw or "").strip()
+        parsed = self._try_parse_json(raw_stripped)
+        if not isinstance(parsed, dict):
+            return raw_stripped, None
+
+        ct = str(parsed.get("corrected_text") or "").strip()
+        if ct:
+            return ct, parsed
+
+        key_strs = [str(k).lower().replace(" ", "_") for k in parsed.keys()]
+        key_joined = " ".join(key_strs)
+        rubric_hints = (
+            "_check",
+            "range_check",
+            "presence_check",
+            "format_check",
+            "consistency_check",
+        )
+        if any(h in key_joined for h in rubric_hints):
+            return "", parsed
+        if "type" in parsed and str(parsed.get("type", "")).strip().lower() in (
+            "check",
+            "checks",
+            "validation",
+        ):
+            return "", parsed
+
+        if len(parsed) == 1:
+            _k, v = next(iter(parsed.items()))
+            if isinstance(v, str) and len(v.strip()) > 2 and _k != "type":
+                return v.strip(), parsed
+
+        return "", parsed
+
+    async def transcribe_answer_image(
+        self,
+        pil_image: Any,
+        model_override: Optional[str] = None,
+    ) -> LLMResponse:
+        """
+        Transcribe a student-answer crop via Ollama vision. Model replies with JSON only:
+        {"corrected_text":"..."} (same key as OCR text cleanup).
+        """
+        model = (model_override or OLLAMA_VISION_MODEL or "").strip()
+        if not model:
+            raise ValueError("OLLAMA_VISION_MODEL is not configured")
+
+        prompt = """Read the exam answer in this image. Transcribe every word you see (handwriting or print).
+
+Reply with ONE JSON object only. No markdown, no ``` fences, no commentary before or after.
+
+Exact shape — only this key, nothing else:
+{"corrected_text":"<full transcript as one JSON string; use \\n for new lines>"}
+
+FORBIDDEN — never output: "type", "range_check", "*_check", or any checklist/rubric keys.
+
+Correct example:
+{"corrected_text":"Part (a): O(n).\\nPart (b): Two nested loops."}
+
+Wrong example (do NOT):
+{"type":"check","range_check":"..."}"""
+
+        result = await self._call_ollama_vision(
+            prompt,
+            pil_image,
+            model=model,
+            system_prompt=None,
+        )
+
+        final_text, parsed = self._parse_vision_corrected_text(result.raw_response)
+        if not final_text.strip():
+            raise RuntimeError(
+                "Vision model did not return usable JSON with key corrected_text "
+                "(got a rubric/checklist or empty value). Retry or check OLLAMA_VISION_MODEL."
+            )
+
+        return LLMResponse(
+            raw_response=final_text,
+            parsed_response=parsed if isinstance(parsed, dict) else None,
+            model_used=result.model_used,
+            processing_time_ms=result.processing_time_ms,
+            tokens_used=result.tokens_used,
         )
 
     async def _call_openrouter(

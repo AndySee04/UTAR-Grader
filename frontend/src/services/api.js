@@ -85,7 +85,8 @@ export const processingAPI = {
     api.post(`/documents/${docId}/detect-regions`, null, {
       params: { page_number: pageNumber },
     }),
-  runOCR: (regionId) => api.post(`/regions/${regionId}/ocr`),
+  runOCR: (regionId, params) =>
+    api.post(`/regions/${regionId}/ocr`, null, { params: params || {} }),
   deleteRegion: (regionId) => api.delete(`/regions/${regionId}`),
   updateRegionText: (regionId, data) =>
     api.patch(`/regions/${regionId}`, data),
