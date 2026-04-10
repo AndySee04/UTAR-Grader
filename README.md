@@ -19,7 +19,7 @@ An automated exam paper grading system using OCR (CRAFT + TrOCR) and LLM (Ollama
 - **Backend**: FastAPI (Python)
 - **Frontend**: React + Vite + TailwindCSS
 - **Database**: SQLite (development) / PostgreSQL (production)
-- **OCR**: CRAFT (EasyOCR detector) + TrOCR (microsoft/trocr-base-printed for question papers, microsoft/trocr-base-handwritten for student answers)
+- **OCR**: CRAFT (EasyOCR detector) + TrOCR (microsoft/trocr-base-printed for question papers, microsoft/trocr-large-handwritten for student answers)
 - **LLM**: Ollama + Llama 3 / Mistral
 - **GPU**: NVIDIA RTX 4060 recommended
 
