@@ -1,6 +1,8 @@
 import httpx
 import json
 import time
+import math
+import statistics
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 import sys
@@ -18,6 +20,32 @@ from config import (
 )
 
 
+def _geo_mean_token_prob_from_logprobs(entries: Optional[List[Any]]) -> tuple[Optional[float], int]:
+    """
+    Geometric mean of completion-token probabilities: exp(mean(logprob)).
+    entries: list of dicts with a numeric 'logprob' (natural log), Ollama/OpenAI-style.
+    """
+    values: List[float] = []
+    for e in entries or []:
+        if not isinstance(e, dict):
+            continue
+        lp = e.get("logprob")
+        if lp is None:
+            continue
+        try:
+            x = float(lp)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(x):
+            values.append(x)
+    if not values:
+        return None, 0
+    mean_lp = statistics.mean(values)
+    conf = math.exp(mean_lp)
+    conf = max(0.0, min(1.0, conf))
+    return conf, len(values)
+
+
 @dataclass
 class LLMResponse:
     """Response from LLM."""
@@ -26,6 +54,8 @@ class LLMResponse:
     model_used: str
     processing_time_ms: int
     tokens_used: Optional[int] = None
+    confidence_from_logprobs: Optional[float] = None
+    logprob_token_count: int = 0
 
 
 class LLMService:
@@ -95,7 +125,12 @@ class LLMService:
         # Keep at most a reasonable number of lines to avoid prompt bloat.
         return "\n".join(lines[:30])
     
-    async def _call_ollama(self, prompt: str, system_prompt: Optional[str] = None) -> LLMResponse:
+    async def _call_ollama(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        request_completion_logprobs: bool = False,
+    ) -> LLMResponse:
         """
         Call Ollama API.
         
@@ -122,7 +157,10 @@ class LLMService:
                 "num_predict": 2048
             }
         }
-        
+        if request_completion_logprobs:
+            payload["logprobs"] = True
+            payload["top_logprobs"] = 0
+
         if self.debug:
             try:
                 safe_payload = {
@@ -140,6 +178,12 @@ class LLMService:
                 f"{self.base_url}/api/chat",
                 json=payload
             )
+            if request_completion_logprobs and response.status_code == 400:
+                payload_retry = {k: v for k, v in payload.items() if k not in ("logprobs", "top_logprobs")}
+                response = await client.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload_retry
+                )
             response.raise_for_status()
             result = response.json()
         
@@ -163,20 +207,29 @@ class LLMService:
         
         # Try to parse JSON from response
         parsed = self._try_parse_json(raw_response)
-        
+
+        conf_lp: Optional[float] = None
+        lp_n = 0
+        if request_completion_logprobs:
+            raw_lp = result.get("logprobs")
+            conf_lp, lp_n = _geo_mean_token_prob_from_logprobs(raw_lp if isinstance(raw_lp, list) else None)
+
         return LLMResponse(
             raw_response=raw_response,
             parsed_response=parsed,
             model_used=self.model,
             processing_time_ms=processing_time,
-            tokens_used=result.get("eval_count")
+            tokens_used=result.get("eval_count"),
+            confidence_from_logprobs=conf_lp,
+            logprob_token_count=lp_n,
         )
 
     async def _call_openrouter(
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        model_override: Optional[str] = None
+        model_override: Optional[str] = None,
+        request_completion_logprobs: bool = False,
     ) -> LLMResponse:
         """Call OpenRouter chat completions API."""
         if not OPENROUTER_API_KEY:
@@ -194,6 +247,9 @@ class LLMService:
             "messages": messages,
             "temperature": 0.1,
         }
+        if request_completion_logprobs:
+            payload["logprobs"] = True
+            payload["top_logprobs"] = 0
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
@@ -205,6 +261,13 @@ class LLMService:
                 headers=headers,
                 json=payload
             )
+            if request_completion_logprobs and response.status_code == 400:
+                payload_retry = {k: v for k, v in payload.items() if k not in ("logprobs", "top_logprobs")}
+                response = await client.post(
+                    f"{OPENROUTER_BASE_URL}/chat/completions",
+                    headers=headers,
+                    json=payload_retry
+                )
             response.raise_for_status()
             result = response.json()
 
@@ -217,12 +280,22 @@ class LLMService:
         parsed = self._try_parse_json(raw_response)
         tokens = (result.get("usage", {}) or {}).get("total_tokens")
 
+        conf_lp: Optional[float] = None
+        lp_n = 0
+        if request_completion_logprobs:
+            choice = (result.get("choices") or [{}])[0]
+            lp_obj = choice.get("logprobs") or {}
+            content = lp_obj.get("content")
+            conf_lp, lp_n = _geo_mean_token_prob_from_logprobs(content if isinstance(content, list) else None)
+
         return LLMResponse(
             raw_response=raw_response,
             parsed_response=parsed,
             model_used=model_name,
             processing_time_ms=processing_time,
-            tokens_used=tokens
+            tokens_used=tokens,
+            confidence_from_logprobs=conf_lp,
+            logprob_token_count=lp_n,
         )
     
     def _try_parse_json(self, text: str) -> Optional[Dict[str, Any]]:
@@ -304,6 +377,8 @@ OCR_TEXT_END
             model_used=result.model_used,
             processing_time_ms=result.processing_time_ms,
             tokens_used=result.tokens_used,
+            confidence_from_logprobs=result.confidence_from_logprobs,
+            logprob_token_count=result.logprob_token_count,
         )
     
     async def generate_marking_guide(
@@ -409,8 +484,10 @@ Return only valid JSON (no markdown, no extra text)."""
 
         provider_norm = (provider or "ollama").strip().lower()
         if provider_norm == "openrouter":
-            return await self._call_openrouter(prompt, system_prompt, model_override=model_override)
-        return await self._call_ollama(prompt, system_prompt)
+            return await self._call_openrouter(
+                prompt, system_prompt, model_override=model_override, request_completion_logprobs=True
+            )
+        return await self._call_ollama(prompt, system_prompt, request_completion_logprobs=True)
     
     async def check_health(self) -> bool:
         """Check if Ollama is running and model is available."""

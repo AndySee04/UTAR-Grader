@@ -233,6 +233,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 
 - [x] Centralize TrOCR loading in `model_loader.py`; preload model on FastAPI lifespan startup (`main.py`)
 - [x] Local Ollama grading: resolve chat model via `get_ollama_model()` / `OLLAMA_MODEL` from environment (no stale client-side override)
+- [x] Grading logprobs: Ollama + OpenRouter request completion logprobs; lexical confidence = **geometric mean** of token probs `exp(mean(logprob))`, clamped; HTTP 400 → retry without logprobs; persist `grades.confidence`; expose in grade APIs, ExamResults, student PDF
 - [x] Optional Ollama **vision** pass for student-answer OCR refresh (config e.g. `OLLAMA_VISION_MODEL`, JSON `corrected_text`, image resize, error handling; `use_ollama_vision` query param where applicable)
 - [x] `processing.py`: re-raise `HTTPException` before generic `except` so clients get correct status codes (e.g. 502 vs 500)
 
@@ -387,7 +388,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 ## Current Progress
 
 **Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
-**Last Updated**: 2026-04-18
+**Last Updated**: 2026-04-10
 
 ### Priority TODOs
 

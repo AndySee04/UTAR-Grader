@@ -43,11 +43,6 @@ def _quote_grounded(quote: str, student_answer: str) -> bool:
     return bool(q) and (q in sa)
 
 
-#
-# NOTE: AI confidence scoring + auditor verification were removed.
-#
-
-
 @router.post("/exams/{exam_id}/grade", response_model=StartGradingResponse)
 async def start_grading(
     exam_id: str,
@@ -302,6 +297,12 @@ async def grade_student_paper(
                         pass
                     parsed = parsed or {}
 
+            if not isinstance(parsed, dict):
+                parsed = {}
+            # Lexical confidence from completion logprobs (geometric mean of token probs); overrides regex "Confidence:" when present.
+            if result.confidence_from_logprobs is not None:
+                parsed["confidence"] = result.confidence_from_logprobs
+
             # Quote-grounding guardrail: if the model provided evidence_quotes,
             # ensure at least one quote is grounded in the student answer. If not,
             # force score=0 with low confidence to avoid hallucinated grading.
@@ -343,11 +344,13 @@ async def grade_student_paper(
             )
             db.add(student_ans)
 
+            conf = parsed.get("confidence")
             grade = Grade(
                 student_answer=student_ans,
                 llm_response=llm_resp,
                 score=score,
                 max_marks=max_marks,
+                confidence=Decimal(str(conf)) if conf is not None else None,
                 feedback=parsed.get("feedback", "")
             )
             db.add(grade)
@@ -424,6 +427,7 @@ async def get_exam_grades(
                 student_answer=sa.answer_text[:200] if sa and sa.answer_text else "",
                 score=float(g.score) if g.score is not None else None,
                 max_marks=float(g.max_marks) if g.max_marks is not None else None,
+                confidence=float(g.confidence) if g.confidence is not None else None,
                 feedback=g.feedback,
                 is_overridden=g.is_overridden
             ))
@@ -489,6 +493,7 @@ async def get_student_grades(
             student_answer=sa.answer_text if sa else "",
             score=float(g.score) if g.score is not None else None,
             max_marks=float(g.max_marks) if g.max_marks is not None else None,
+            confidence=float(g.confidence) if g.confidence is not None else None,
             feedback=g.feedback,
             is_overridden=g.is_overridden
         ))

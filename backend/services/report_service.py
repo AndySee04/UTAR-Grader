@@ -154,30 +154,38 @@ class ReportService:
         elements.append(Paragraph(f"<b>Percentage:</b> {percentage:.1f}%", styles['Normal']))
         elements.append(Spacer(1, 20))
         
-        # Grades table
-        table_data = [["Question", "Score", "Max", "Feedback"]]
+        # Grades table (lexical AI confidence = geometric mean of token probs from logprobs when available)
+        table_data = [["Question", "Score", "Max", "AI conf.", "Feedback"]]
         
         for grade in grades:
+            c = grade.get("confidence")
+            conf_cell = "—"
+            if c is not None:
+                try:
+                    conf_cell = f"{float(c) * 100:.0f}%"
+                except (TypeError, ValueError):
+                    conf_cell = "—"
             table_data.append([
                 grade.get("question_number", ""),
                 f"{grade.get('score', 0):.1f}",
                 f"{grade.get('max_marks', 0):.1f}",
+                conf_cell,
                 Paragraph(grade.get("feedback", ""), feedback_style)
             ])
         
-        table = Table(table_data, colWidths=[1*inch, 0.8*inch, 0.8*inch, 4*inch])
+        table = Table(table_data, colWidths=[0.85*inch, 0.65*inch, 0.65*inch, 0.75*inch, 3.9*inch])
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('ALIGN', (3, 1), (3, -1), 'LEFT'),  # Feedback left-aligned
+            ('ALIGN', (4, 1), (4, -1), 'LEFT'),  # Feedback left-aligned
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#E8E8E8')),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (2, -1), 9),  # feedback uses Paragraph style
+            ('FONTSIZE', (0, 1), (3, -1), 9),  # feedback uses Paragraph style
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))

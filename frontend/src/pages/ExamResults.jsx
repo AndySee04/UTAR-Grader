@@ -3,6 +3,25 @@ import { useParams, Link } from 'react-router-dom'
 import { gradingAPI, reportsAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 
+/**
+ * Mean / geometric token probability (0–1) → level bands:
+ * High ≥0.85 (auto-accept), Medium 0.65–0.84 (optional review), Low <0.65 (flag for review).
+ * Exact % on hover only.
+ */
+function lexicalConfidenceLevel(confidence) {
+  if (confidence == null || !Number.isFinite(confidence)) return null
+  const pct = Math.round(confidence * 100)
+  if (confidence >= 0.85) return { label: 'High', pct, band: 'high' }
+  if (confidence >= 0.65) return { label: 'Medium', pct, band: 'medium' }
+  return { label: 'Low', pct, band: 'low' }
+}
+
+const CONFIDENCE_BADGE_STYLES = {
+  high: 'text-emerald-800 dark:text-emerald-200 bg-emerald-100/90 dark:bg-emerald-950/55 border border-emerald-200/80 dark:border-emerald-800/60',
+  medium: 'text-amber-800 dark:text-amber-200 bg-amber-100/90 dark:bg-amber-950/55 border border-amber-200/80 dark:border-amber-800/60',
+  low: 'text-rose-800 dark:text-rose-200 bg-rose-100/90 dark:bg-rose-950/55 border border-rose-200/80 dark:border-rose-800/60',
+}
+
 function ExamResults() {
   const { examId } = useParams()
   const [results, setResults] = useState(null)
@@ -251,7 +270,19 @@ function ExamResults() {
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap justify-end">
+                            {(() => {
+                              const level = lexicalConfidenceLevel(grade.confidence)
+                              if (!level) return null
+                              return (
+                                <span
+                                  className={`text-xs font-semibold px-2 py-0.5 rounded-md cursor-default ${CONFIDENCE_BADGE_STYLES[level.band]}`}
+                                  title={`${level.pct}%`}
+                                >
+                                  {level.label}
+                                </span>
+                              )
+                            })()}
                             <span className={`text-sm font-bold ${
                               (grade.score / grade.max_marks) >= 0.5 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                             }`}>
@@ -290,7 +321,7 @@ function ExamResults() {
                     {grade.student_answer && (
                       <div className="mb-2 rounded-lg border border-gray-100 dark:border-slate-700 bg-gray-50/80 dark:bg-slate-800/50 px-3 py-2">
                         <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-slate-500 mb-0.5">
-                          Student answer
+                          Graded answer
                         </p>
                         <p className="text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap">
                           {grade.student_answer}

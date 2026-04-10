@@ -83,6 +83,15 @@ ollama pull llama3:8b
 
 Ollama is required for grading (and any other LLM features you enable).
 
+### Grading: optional “AI confidence” (logprobs)
+
+When you run automated grading, the backend asks the chat API for **completion logprobs** (where supported). It stores a **lexical** confidence score per question on `grades.confidence`: the **geometric mean** of the model’s chosen token probabilities, i.e. **exp(mean(logprob))** over completion tokens, clamped to **[0, 1]**—not a guarantee the mark is “correct.”
+
+- **Ollama**: use a version whose **Chat API** returns a top-level `logprobs` array ([Ollama Chat API](https://docs.ollama.com/api/chat)). If the server rejects the request, the backend retries once without logprobs; confidence is then omitted (`null`).
+- **OpenRouter**: logprobs depend on the **upstream model**. Unsupported parameters trigger a retry without logprobs.
+
+Older graded rows or failed logprob requests show **no** confidence in the UI/PDF until you re-run grading.
+
 ## OCR tuning (CRAFT + TrOCR)
 
 Use `.env` to control CRAFT detection behavior:

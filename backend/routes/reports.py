@@ -126,6 +126,7 @@ async def download_student_pdf(
             "question_number": mg.question_number if mg else "",
             "score": float(g.score or 0),
             "max_marks": float(g.max_marks or 0),
+            "confidence": float(g.confidence) if g.confidence is not None else None,
             "feedback": g.feedback or ""
         })
     
@@ -189,6 +190,7 @@ async def download_all_student_pdfs(
                     "question_number": mg.question_number if mg else "",
                     "score": float(g.score or 0),
                     "max_marks": float(g.max_marks or 0),
+                    "confidence": float(g.confidence) if g.confidence is not None else None,
                     "feedback": g.feedback or ""
                 })
             
