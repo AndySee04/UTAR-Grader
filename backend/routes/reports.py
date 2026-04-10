@@ -122,11 +122,14 @@ async def download_student_pdf(
     grade_list = []
     for g in grades:
         mg = g.student_answer.marking_guide if g.student_answer else None
+        sa = g.student_answer
         grade_list.append({
             "question_number": mg.question_number if mg else "",
+            "question_text": (mg.question_text if mg else None) or "",
             "score": float(g.score or 0),
             "max_marks": float(g.max_marks or 0),
             "confidence": float(g.confidence) if g.confidence is not None else None,
+            "student_answer": (sa.answer_text if sa else None) or "",
             "feedback": g.feedback or ""
         })
     
@@ -186,11 +189,14 @@ async def download_all_student_pdfs(
             grade_list = []
             for g in grades:
                 mg = g.student_answer.marking_guide if g.student_answer else None
+                sa = g.student_answer
                 grade_list.append({
                     "question_number": mg.question_number if mg else "",
+                    "question_text": (mg.question_text if mg else None) or "",
                     "score": float(g.score or 0),
                     "max_marks": float(g.max_marks or 0),
                     "confidence": float(g.confidence) if g.confidence is not None else None,
+                    "student_answer": (sa.answer_text if sa else None) or "",
                     "feedback": g.feedback or ""
                 })
             
