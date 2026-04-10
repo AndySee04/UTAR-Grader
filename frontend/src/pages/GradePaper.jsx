@@ -1790,7 +1790,7 @@ function GradePaper() {
 
                   {/* Right: Extracted answers (independently scrollable) */}
                   <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden flex flex-col">
-                    <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+                    <div className="sticky top-0 z-20 flex items-center gap-2 mb-3 flex-shrink-0 py-2.5 bg-gray-50/92 backdrop-blur-md border-b border-gray-200/70 shadow-sm shadow-gray-900/[0.06]">
                       <h4 className="text-sm font-semibold text-gray-700">Extracted Text</h4>
                       {processingNewCrop && (
                         <span className="inline-flex items-center gap-1 text-xs text-indigo-600">

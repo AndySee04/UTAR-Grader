@@ -36,6 +36,7 @@ function Navbar() {
   const { user, logout } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
   const navigate = useNavigate()
   const accountMenuRef = useRef(null)
 
@@ -57,8 +58,21 @@ function Navbar() {
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [])
 
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
   return (
-    <nav className="bg-white/80 backdrop-blur-xl border-b border-gray-100 sticky top-0 z-40">
+    <nav
+      className={`sticky top-0 z-40 border-b backdrop-blur-xl transition-[background-color,box-shadow,border-color] duration-200 ${
+        scrolled
+          ? 'bg-white/55 border-gray-200/40 shadow-sm shadow-gray-900/[0.04]'
+          : 'bg-white/85 border-gray-100'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="flex justify-between h-16">
           {/* Logo + Nav */}
