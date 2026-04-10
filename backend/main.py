@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import init_db
 from config import UPLOAD_DIR
+from model_loader import load_models
 
 
 @asynccontextmanager
@@ -16,6 +17,7 @@ async def lifespan(app: FastAPI):
     init_db()
     UPLOAD_DIR.mkdir(exist_ok=True)
     print("Database initialized and upload directory ready.")
+    load_models()
     yield
     # Shutdown
     print("Shutting down...")

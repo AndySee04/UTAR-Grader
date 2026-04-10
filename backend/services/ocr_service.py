@@ -25,6 +25,10 @@ class OCRService:
         self.device = None
         self._initialized = False
     
+    def preload(self) -> None:
+        """Load processor and weights now (e.g. at API startup)."""
+        self._lazy_init()
+    
     def _lazy_init(self):
         """Lazy initialization of model to save memory until first use."""
         if self._initialized:
