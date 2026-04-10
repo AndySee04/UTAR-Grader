@@ -106,6 +106,12 @@ textarea:focus {
     border-color 0.2s;
 }
 
+/* Unsaved answer guide: keep yellow focus ring/border (global rule uses indigo !important) */
+textarea.answer-guide-unsaved:focus {
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.28);
+  border-color: #ca8a04 !important; /* yellow-600 */
+}
+
 button:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);

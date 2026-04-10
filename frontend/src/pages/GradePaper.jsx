@@ -1470,7 +1470,12 @@ function GradePaper() {
                 </tr>
               </thead>
               <tbody>
-                {markingGuide.map((q, i) => (
+                {markingGuide.map((q, i) => {
+                  const answerGuideDraft =
+                    answerGuideDrafts[q.id] ?? q.answer_scheme ?? ''
+                  const answerGuideSaved = q.answer_scheme ?? ''
+                  const answerGuideUnsaved = answerGuideDraft !== answerGuideSaved
+                  return (
                   <React.Fragment key={q.id}>
                     <tr className="table-row align-top">
                       <td className="px-4 py-3">
@@ -1513,7 +1518,7 @@ function GradePaper() {
                       <td className="px-4 py-2 align-top" colSpan={4}>
                         <div className="relative group">
                           <textarea
-                            value={answerGuideDrafts[q.id] ?? q.answer_scheme ?? ''}
+                            value={answerGuideDraft}
                             onChange={(e) =>
                               setAnswerGuideDrafts((prev) => ({
                                 ...prev,
@@ -1521,14 +1526,18 @@ function GradePaper() {
                               }))
                             }
                             rows={6}
-                            className="w-full min-h-[120px] px-3 py-2 pr-16 border border-gray-200 rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500 resize-y bg-white"
+                            className={`w-full min-h-[120px] px-3 py-2 pr-16 rounded-lg text-sm resize-y bg-white text-neutral-900 placeholder:text-gray-400 ${
+                              answerGuideUnsaved
+                                ? 'answer-guide-unsaved border-2 border-yellow-400 focus:ring-2 focus:ring-yellow-400/45 focus:border-yellow-500'
+                                : 'border border-gray-200 focus:ring-indigo-500 focus:border-indigo-500'
+                            }`}
                             placeholder="Describe the ideal/correct answer, key points, marking notes..."
                           />
                           {savingAnswerGuideId === q.id ? (
                             <span className="absolute bottom-2 right-3 text-[11px] text-gray-400 select-none">
                               Saving...
                             </span>
-                          ) : (answerGuideDrafts[q.id] ?? q.answer_scheme ?? '') !== (q.answer_scheme ?? '') ? (
+                          ) : answerGuideUnsaved ? (
                             <button
                               type="button"
                               onClick={async () => {
@@ -1563,7 +1572,8 @@ function GradePaper() {
                       </td>
                     </tr>
                   </React.Fragment>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
