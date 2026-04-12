@@ -23,24 +23,4 @@ def get_db():
 
 def init_db():
     from models import user, exam, document, extracted_text, marking_guide, llm_response, student_answer, grade
-    from sqlalchemy import text
     Base.metadata.create_all(bind=engine)
-    if "sqlite" in DATABASE_URL:
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE extracted_text ADD COLUMN display_order INTEGER"))
-                conn.commit()
-        except Exception:
-            pass
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE grades ADD COLUMN confidence REAL"))
-                conn.commit()
-        except Exception:
-            pass
-        try:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN profile_picture_path TEXT"))
-                conn.commit()
-        except Exception:
-            pass

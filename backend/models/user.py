@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, LargeBinary
 from sqlalchemy.dialects.sqlite import CHAR
 from sqlalchemy.orm import relationship
 from database import Base
@@ -13,7 +13,9 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(255))
-    profile_picture_path = Column(String(500), nullable=True)
+    profile_picture_data = Column(LargeBinary, nullable=True)
+    profile_picture_mime_type = Column(String(80), nullable=True)
+    profile_picture_version = Column(String(40), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     exams = relationship("Exam", back_populates="user", cascade="all, delete-orphan")

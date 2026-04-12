@@ -9,7 +9,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db
 from models.user import User
 from schemas.auth import UserCreate, UserLogin, UserResponse, Token, MessageResponse
-from pathlib import Path
 from utils.auth import (
     get_password_hash,
     verify_password,
@@ -74,14 +73,18 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+def _picture_cache_version(user: User):
+    if user.profile_picture_version:
+        return user.profile_picture_version
+    if user.profile_picture_data:
+        return str(len(user.profile_picture_data))
+    return None
+
+
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current logged-in user information."""
-    picture_version = (
-        Path(current_user.profile_picture_path).name
-        if current_user.profile_picture_path
-        else None
-    )
+    picture_version = _picture_cache_version(current_user)
     return {
         "id": current_user.id,
         "email": current_user.email,
