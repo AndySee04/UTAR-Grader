@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional, Tuple
 from datetime import datetime
 from decimal import Decimal
+import asyncio
 import sys
 import os
 import re
@@ -29,6 +30,9 @@ from services.llm_service import llm_service
 from services.pdf_service import pdf_service
 from services.ocr_service import ocr_service
 from services.cv_service import cv_service
+from config import smtp_configured
+from services.email_service import send_grading_complete_email
+from services.grading_report_bundle import build_excel_bytes, build_all_pdfs_zip_bytes
 
 router = APIRouter()
 
@@ -107,25 +111,27 @@ async def grade_exam_background(exam_id: str, provider: str = "ollama", model: s
 
     if (provider or "").strip().lower() == "ollama":
         model = None
-    
+
+    email_payload: Optional[Tuple] = None
+
     try:
         # Get marking guide
         guides = db.query(MarkingGuide).filter(
             MarkingGuide.exam_id == exam_id
         ).order_by(MarkingGuide.question_number).all()
-        
+
         # Get student documents
         student_docs = db.query(Document).filter(
             Document.exam_id == exam_id,
             Document.doc_type == "student_answer"
         ).all()
-        
+
         for doc in student_docs:
             try:
                 await grade_student_paper(db, doc, guides, exam_id, provider=provider, model=model)
             except Exception as e:
                 print(f"Error grading document {doc.id}: {e}")
-        
+
         # Update exam status
         exam = db.query(Exam).filter(Exam.id == exam_id).first()
         if exam:
@@ -133,10 +139,55 @@ async def grade_exam_background(exam_id: str, provider: str = "ollama", model: s
             exam.completed_at = datetime.utcnow()
             db.commit()
 
+            if smtp_configured():
+                owner = db.query(User).filter(User.id == exam.user_id).first()
+                if owner and owner.email:
+                    try:
+                        excel_b, x_fn = build_excel_bytes(db, exam)
+                        z_pair = build_all_pdfs_zip_bytes(db, exam)
+                        z_b, z_fn = z_pair if z_pair else (None, None)
+                        display_name = (owner.name or "").strip() or None
+                        email_payload = (
+                            owner.email,
+                            display_name,
+                            exam.name,
+                            exam.id,
+                            excel_b,
+                            x_fn,
+                            z_b,
+                            z_fn,
+                        )
+                        print(
+                            f"[grading-email] prepared for exam_id={exam.id} → {owner.email}",
+                            flush=True,
+                        )
+                    except Exception as e2:
+                        print(f"[grading-email] attachment build failed: {e2}", flush=True)
+                else:
+                    print(
+                        "[grading-email] skipped: user account has no email (register with a real address)",
+                        flush=True,
+                    )
+            else:
+                print(
+                    "[grading-email] skipped: SMTP not configured "
+                    "(set SMTP_USER + SMTP_PASSWORD in .env at project root or backend/)",
+                    flush=True,
+                )
+
     except Exception as e:
         print(f"Error in grading background task: {e}")
     finally:
         db.close()
+
+    if email_payload:
+        try:
+            await asyncio.to_thread(send_grading_complete_email, *email_payload)
+            print("[grading-email] sent OK", flush=True)
+        except Exception as e:
+            print(f"[grading-email] send failed: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
 
 
 async def grade_student_paper(

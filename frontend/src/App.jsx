@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -10,7 +10,8 @@ import ManageAccount from './pages/ManageAccount'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
-  
+  const location = useLocation()
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50/50 dark:bg-slate-950">
@@ -18,11 +19,12 @@ function ProtectedRoute({ children }) {
       </div>
     )
   }
-  
+
   if (!user) {
-    return <Navigate to="/login" replace />
+    const next = encodeURIComponent(`${location.pathname}${location.search}`)
+    return <Navigate to={`/login?next=${next}`} replace />
   }
-  
+
   return children
 }
 

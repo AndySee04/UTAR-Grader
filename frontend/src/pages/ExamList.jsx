@@ -3,6 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import { examsAPI, reportsAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 
+/** One shared box model for row actions (fixed height; all native buttons so UA styles match). */
+const examRowActionClass =
+  'inline-flex h-9 shrink-0 items-center justify-center border px-3 text-sm font-medium leading-none transition-colors box-border rounded-lg m-0 appearance-none'
+
 function ExamList() {
   const [exams, setExams] = useState([])
   const [loading, setLoading] = useState(true)
@@ -331,30 +335,46 @@ function ExamList() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex flex-none flex-row items-center gap-2">
                   {exam.status === 'completed' && (
                     <>
-                      <Link
-                        to={`/exams/${exam.id}/results`}
-                        className="px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/exams/${exam.id}/results`)
+                        }}
+                        className={`${examRowActionClass} text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40`}
                       >
                         Results
-                      </Link>
+                      </button>
                       <button
-                        onClick={() => navigate('/grade', { state: { examId: exam.id, examName: exam.name, regrade: true } })}
-                        className="px-3 py-1.5 text-sm font-medium text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-950/40 transition-colors"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate('/grade', { state: { examId: exam.id, examName: exam.name, regrade: true } })
+                        }}
+                        className={`${examRowActionClass} text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-50 dark:hover:bg-orange-950/40`}
                       >
                         Regrade
                       </button>
                       <button
-                        onClick={() => downloadExcel(exam.id, exam.name)}
-                        className="px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          downloadExcel(exam.id, exam.name)
+                        }}
+                        className={`${examRowActionClass} text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40`}
                       >
                         Excel
                       </button>
                       <button
-                        onClick={() => downloadAllPDFs(exam.id, exam.name)}
-                        className="px-3 py-1.5 text-sm font-medium text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          downloadAllPDFs(exam.id, exam.name)
+                        }}
+                        className={`${examRowActionClass} text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800 hover:bg-purple-50 dark:hover:bg-purple-950/40`}
                       >
                         PDFs
                       </button>
@@ -370,8 +390,12 @@ function ExamList() {
                     </span>
                   )}
                   <button
-                    onClick={() => setDeleteTarget({ id: exam.id, name: exam.name })}
-                    className="p-1.5 text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-all"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDeleteTarget({ id: exam.id, name: exam.name })
+                    }}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:text-slate-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

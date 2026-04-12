@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import init_db
-from config import UPLOAD_DIR
+from config import UPLOAD_DIR, smtp_configured
 from model_loader import load_models
 
 
@@ -18,6 +18,13 @@ async def lifespan(app: FastAPI):
     UPLOAD_DIR.mkdir(exist_ok=True)
     print("Database initialized and upload directory ready.")
     load_models()
+    if smtp_configured():
+        print("Grading completion emails: SMTP enabled.")
+    else:
+        print(
+            "Grading completion emails: disabled — set SMTP_USER and SMTP_PASSWORD "
+            "in the project root .env or backend/.env"
+        )
     yield
     # Shutdown
     print("Shutting down...")

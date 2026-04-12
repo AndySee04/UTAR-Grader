@@ -5,18 +5,31 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Load .env from project root so os.getenv(...) sees keys in local development.
-ENV_PATH = BASE_DIR / ".env"
-if ENV_PATH.exists():
-    for raw_line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+def _try_set_env(key: str, value: str) -> None:
+    """Set from .env only if missing or empty (so real OS env wins; empty placeholders can be filled)."""
+    if not key:
+        return
+    v = value.strip().strip('"').strip("'")
+    cur = os.environ.get(key)
+    if cur is None or (isinstance(cur, str) and cur.strip() == ""):
+        os.environ[key] = v
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = value
+        _try_set_env(key.strip(), value)
+
+
+# Project root .env, then backend/.env (fills vars missing from the first file).
+_BACKEND_DIR = Path(__file__).resolve().parent
+_load_env_file(BASE_DIR / ".env")
+_load_env_file(_BACKEND_DIR / ".env")
 
 # Database stored in backend folder
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/backend/auto_grade.db")
@@ -65,3 +78,30 @@ OCR_DIAGNOSTICS = os.getenv("OCR_DIAGNOSTICS", "0").strip().lower() in {"1", "tr
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 ALLOWED_EXTENSIONS = {".pdf"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+# Public site URL for links in emails (no trailing slash).
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").strip().rstrip("/")
+
+# Gmail: use an App Password (Google Account → Security → 2-Step → App passwords).
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
+SMTP_PORT = _env_int("SMTP_PORT", 465)
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", "").strip()
+# Use 1 with SMTP_PORT=587 if SSL on 465 is blocked (Gmail supports both).
+SMTP_USE_STARTTLS = os.getenv("SMTP_USE_STARTTLS", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def smtp_configured() -> bool:
+    return bool(SMTP_USER and SMTP_PASSWORD)

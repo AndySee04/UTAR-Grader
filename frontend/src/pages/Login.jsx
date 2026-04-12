@@ -1,17 +1,31 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import ThemeToggle from '../components/ThemeToggle'
+
+function sanitizeNext(raw) {
+  if (!raw || typeof raw !== 'string') return null
+  const t = raw.trim()
+  if (!t.startsWith('/') || t.startsWith('//')) return null
+  return t
+}
 
 function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, user, loading: authLoading } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (authLoading) return
+    const next = sanitizeNext(searchParams.get('next'))
+    if (user && next) navigate(next, { replace: true })
+  }, [authLoading, user, searchParams, navigate])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -21,7 +35,8 @@ function Login() {
     try {
       await login(email, password)
       toast.success('Welcome back!')
-      navigate('/')
+      const dest = sanitizeNext(searchParams.get('next')) || '/'
+      navigate(dest)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to login')
     } finally {
