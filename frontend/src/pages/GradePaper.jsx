@@ -1607,7 +1607,7 @@ function GradePaper() {
                   type="text"
                   value={gradingModel}
                   onChange={(e) => setGradingModel(e.target.value)}
-                  placeholder="e.g. meta-llama/llama-3.1-8b-instruct (optional)"
+                  placeholder="Default: Auto select best model"
                   className="w-72 px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 />
               ) : (

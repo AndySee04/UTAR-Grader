@@ -99,6 +99,8 @@ SMTP_PORT = _env_int("SMTP_PORT", 465)
 SMTP_USER = os.getenv("SMTP_USER", "").strip()
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
 SMTP_FROM = os.getenv("SMTP_FROM", "").strip()
+# Shown as the sender name in the inbox (address still uses SMTP_FROM or SMTP_USER for Gmail).
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "UTAR Grader").strip() or "UTAR Grader"
 # Use 1 with SMTP_PORT=587 if SSL on 465 is blocked (Gmail supports both).
 SMTP_USE_STARTTLS = os.getenv("SMTP_USE_STARTTLS", "").strip().lower() in {"1", "true", "yes", "on"}
 

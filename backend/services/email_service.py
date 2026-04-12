@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import smtplib
 import ssl
+from email.utils import formataddr
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -13,6 +14,7 @@ from typing import Optional
 from config import (
     FRONTEND_BASE_URL,
     SMTP_FROM,
+    SMTP_FROM_NAME,
     SMTP_HOST,
     SMTP_PASSWORD,
     SMTP_PORT,
@@ -136,9 +138,12 @@ def send_grading_complete_email(
 </body>
 </html>"""
 
+    mailbox = SMTP_FROM or SMTP_USER
+    from_header = formataddr((SMTP_FROM_NAME, mailbox))
+
     msg = MIMEMultipart("mixed")
     msg["Subject"] = f"Grading complete: {exam_name}".replace("\n", " ").replace("\r", "")[:200]
-    msg["From"] = SMTP_FROM or SMTP_USER
+    msg["From"] = from_header
     msg["To"] = to_email
 
     alt = MIMEMultipart("alternative")
@@ -156,7 +161,8 @@ def send_grading_complete_email(
         msg.attach(z)
 
     context = ssl.create_default_context()
-    envelope_from = SMTP_FROM or SMTP_USER
+    # SMTP envelope: must be an address Gmail accepts for this login (usually SMTP_USER).
+    envelope_from = mailbox
     payload = msg.as_string()
 
     if SMTP_USE_STARTTLS:
