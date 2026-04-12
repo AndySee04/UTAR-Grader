@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from passlib.context import CryptContext
 from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import sys
@@ -46,6 +46,7 @@ def decode_token(token: str) -> Optional[dict]:
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
@@ -74,5 +75,8 @@ async def get_current_user(
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    request.state.user_id = user.id
+    request.state.user_email = user.email
+
     return user

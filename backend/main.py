@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 import os
 import sys
 
+from middleware.request_logging import AuthRequestLogMiddleware, configure_app_request_logging
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import init_db
@@ -14,6 +16,7 @@ from model_loader import load_models
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize database
+    configure_app_request_logging()
     init_db()
     UPLOAD_DIR.mkdir(exist_ok=True)
     print("Database initialized and upload directory ready.")
@@ -38,6 +41,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(AuthRequestLogMiddleware)
 
 
 @app.get("/")
