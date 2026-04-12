@@ -1021,6 +1021,7 @@ function GradePaper() {
       navigate('/exams')
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to start grading')
+    } finally {
       setLoading(false)
     }
   }

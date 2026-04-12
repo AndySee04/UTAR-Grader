@@ -9,8 +9,20 @@ const api = axios.create({
   },
 });
 
-// Add auth token to requests
+function hasAuthorizationHeader(config) {
+  const h = config.headers;
+  if (!h) return false;
+  if (h.Authorization) return true;
+  if (typeof h.get === "function" && h.get("Authorization")) return true;
+  return false;
+}
+
+// Add auth token to requests (do not overwrite an explicit Authorization — used when
+// token is snapshotted before a long-running call so logout mid-flight cannot strip auth.)
 api.interceptors.request.use((config) => {
+  if (hasAuthorizationHeader(config)) {
+    return config;
+  }
   const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -99,8 +111,17 @@ export const markingGuideAPI = {
 
 // Grading
 export const gradingAPI = {
-  start: (examId, payload = {}) =>
-    api.post(`/exams/${examId}/grade`, { process_all: true, ...payload }),
+  /** Snapshots token at call time so grading can start even if user logs out before the request finishes. */
+  start: (examId, payload = {}) => {
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    return api.post(
+      `/exams/${examId}/grade`,
+      { process_all: true, ...payload },
+      { headers },
+    );
+  },
   getGrades: (examId) => api.get(`/exams/${examId}/grades`),
   overrideGrade: (gradeId, data) => api.put(`/grades/${gradeId}`, data),
 };
