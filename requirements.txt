@@ -35,6 +35,7 @@ httpx==0.26.0
 # Reports
 openpyxl==3.1.2
 reportlab==4.0.9
+pypdf==6.10.0
 
 # Utilities
 python-dotenv==1.0.0

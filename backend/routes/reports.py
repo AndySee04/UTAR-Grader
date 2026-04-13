@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+from io import BytesIO
 import sys
 import os
+from pypdf import PdfReader, PdfWriter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -11,6 +13,7 @@ from models.user import User
 from models.exam import Exam
 from models.marking_guide import MarkingGuide
 from models.student_answer import StudentAnswer
+from models.document import Document
 from models.grade import Grade, GradingSummary
 from utils.auth import get_current_user
 from services.report_service import report_service
@@ -50,7 +53,7 @@ async def download_student_pdf(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Download PDF report for a specific student."""
+    """Download PDF report for a specific student, with original paper appended."""
     exam = db.query(Exam).filter(
         Exam.id == exam_id,
         Exam.user_id == current_user.id
@@ -87,7 +90,7 @@ async def download_student_pdf(
         })
     
     # Generate PDF
-    pdf_bytes = report_service.generate_student_pdf(
+    summary_pdf_bytes = report_service.generate_student_pdf(
         exam_name=exam.name,
         student_name=summary.student_name or "Unknown",
         grades=grade_list,
@@ -95,11 +98,37 @@ async def download_student_pdf(
         total_max=float(summary.total_max_marks or 0),
         percentage=float(summary.percentage or 0)
     )
+
+    # Append student's original uploaded paper to the end of the report.
+    student_doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.exam_id == exam_id,
+        Document.doc_type == "student_answer"
+    ).first()
+
+    if not student_doc:
+        raise HTTPException(status_code=404, detail="Student answer document not found")
+
+    merged = PdfWriter()
+    summary_reader = PdfReader(BytesIO(summary_pdf_bytes))
+    for page in summary_reader.pages:
+        merged.add_page(page)
+
+    try:
+        original_reader = PdfReader(student_doc.file_path)
+        for page in original_reader.pages:
+            merged.add_page(page)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to append original paper PDF: {str(e)}")
+
+    merged_buffer = BytesIO()
+    merged.write(merged_buffer)
+    merged_pdf_bytes = merged_buffer.getvalue()
     
     filename = f"{summary.student_name or 'student'}_report.pdf"
     
     return Response(
-        content=pdf_bytes,
+        content=merged_pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
