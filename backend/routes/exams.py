@@ -14,12 +14,10 @@ from models.user import User
 from models.exam import Exam
 from models.document import Document
 from models.extracted_text import ExtractedText
-from models.questions import Question
-from models.marking_guide import MarkingGuide
+from models.question import Question
 from models.student_answer import StudentAnswer
 from models.grade import Grade
 from models.llm_response import LLMResponse
-from models.questions import Question
 from schemas.exam import ExamCreate, ExamUpdate, ExamResponse, ExamListResponse, ExamDetailResponse
 from utils.auth import get_current_user
 from config import UPLOAD_DIR
@@ -196,7 +194,6 @@ async def delete_exam(
     if doc_ids:
         db.query(ExtractedText).filter(ExtractedText.document_id.in_(doc_ids)).delete(synchronize_session=False)
 
-    db.query(MarkingGuide).filter(MarkingGuide.exam_id == exam.id).delete(synchronize_session=False)
     db.query(Question).filter(Question.exam_id == exam.id).delete(synchronize_session=False)
     db.query(Document).filter(Document.exam_id == exam.id).delete(synchronize_session=False)
     db.delete(exam)

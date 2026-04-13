@@ -12,8 +12,7 @@ from models.user import User
 from models.exam import Exam
 from models.document import Document
 from models.extracted_text import ExtractedText
-from models.questions import Question
-from models.marking_guide import MarkingGuide
+from models.question import Question
 from models.llm_response import LLMResponse
 from schemas.marking_guide import (
     MarkingGuideCreate, MarkingGuideUpdate, MarkingGuideResponse,
@@ -34,19 +33,18 @@ def _normalize_question_type(value: str | None) -> str | None:
     return None
 
 
-def _to_response(guide: MarkingGuide) -> MarkingGuideResponse:
-    q = guide.question
+def _to_response(q: Question) -> MarkingGuideResponse:
     return MarkingGuideResponse(
-        id=str(guide.id),
-        exam_id=str(guide.exam_id),
-        question_number=(q.question_number if q else "") or "",
-        question_text=(q.question_text if q else None),
-        question_type=guide.question_type,
-        answer_scheme=guide.answer_scheme,
-        max_marks=float(guide.max_marks) if guide.max_marks is not None else None,
-        is_modified=bool(guide.is_modified),
-        created_at=guide.created_at,
-        modified_at=guide.modified_at,
+        id=str(q.id),
+        exam_id=str(q.exam_id),
+        question_number=(q.question_number or ""),
+        question_text=q.question_text,
+        question_type=q.question_type,
+        answer_scheme=q.answer_scheme,
+        max_marks=float(q.max_marks) if q.max_marks is not None else None,
+        is_modified=bool(q.is_modified),
+        created_at=q.created_at,
+        modified_at=q.modified_at,
     )
 
 
@@ -114,7 +112,7 @@ async def generate_marking_guide(
             detail="No extracted text from question paper. Process documents first."
         )
 
-    db.query(MarkingGuide).filter(MarkingGuide.exam_id == exam_id).delete()
+    db.query(Question).filter(Question.exam_id == exam_id).delete()
 
     if request.use_llm:
         try:
@@ -148,19 +146,15 @@ async def generate_marking_guide(
                     question_number=str(item.get("question_number", "")),
                     question_text=item.get("question_text")
                 )
-                db.add(MarkingGuide(
-                    exam_id=exam_id,
-                    question_id=q.id,
-                    question_type=_normalize_question_type(item.get("question_type")),
-                    answer_scheme=item.get("answer_scheme"),
-                    max_marks=float(item.get("max_marks", 0)) if item.get("max_marks") else None
-                ))
+                q.question_type = _normalize_question_type(item.get("question_type"))
+                q.answer_scheme = item.get("answer_scheme")
+                q.max_marks = float(item.get("max_marks", 0)) if item.get("max_marks") else None
             db.commit()
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to generate guide: {str(e)}")
 
-    guides = db.query(MarkingGuide).join(Question).filter(
-        MarkingGuide.exam_id == exam_id
+    guides = db.query(Question).filter(
+        Question.exam_id == exam_id
     ).order_by(Question.question_number).all()
     total_marks = sum(float(g.max_marks or 0) for g in guides)
     return GenerateGuideResponse(
@@ -184,8 +178,8 @@ async def get_marking_guide(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
 
-    guides = db.query(MarkingGuide).join(Question).filter(
-        MarkingGuide.exam_id == exam_id
+    guides = db.query(Question).filter(
+        Question.exam_id == exam_id
     ).order_by(Question.question_number).all()
     return [_to_response(g) for g in guides]
 
@@ -205,18 +199,13 @@ async def add_question(
         raise HTTPException(status_code=404, detail="Exam not found")
 
     q = _get_or_create_question(db, exam_id, question.question_number, question.question_text)
-    guide = MarkingGuide(
-        exam_id=exam_id,
-        question_id=q.id,
-        question_type=_normalize_question_type(question.question_type),
-        answer_scheme=question.answer_scheme,
-        max_marks=question.max_marks,
-        is_modified=True
-    )
-    db.add(guide)
+    q.question_type = _normalize_question_type(question.question_type)
+    q.answer_scheme = question.answer_scheme
+    q.max_marks = question.max_marks
+    q.is_modified = True
     db.commit()
-    db.refresh(guide)
-    return _to_response(guide)
+    db.refresh(q)
+    return _to_response(q)
 
 
 @router.get("/marking-guide/{guide_id}", response_model=MarkingGuideResponse)
@@ -225,8 +214,8 @@ async def get_question(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    guide = db.query(MarkingGuide).join(Exam).filter(
-        MarkingGuide.id == guide_id,
+    guide = db.query(Question).join(Exam).filter(
+        Question.id == guide_id,
         Exam.user_id == current_user.id
     ).first()
     if not guide:
@@ -241,18 +230,17 @@ async def update_question(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    guide = db.query(MarkingGuide).join(Exam).filter(
-        MarkingGuide.id == guide_id,
+    guide = db.query(Question).join(Exam).filter(
+        Question.id == guide_id,
         Exam.user_id == current_user.id
     ).first()
     if not guide:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    q = guide.question
     if update.question_number is not None:
-        q.question_number = update.question_number
+        guide.question_number = update.question_number
     if update.question_text is not None:
-        q.question_text = update.question_text
+        guide.question_text = update.question_text
     if update.question_type is not None:
         guide.question_type = _normalize_question_type(update.question_type)
     if update.answer_scheme is not None:
@@ -272,8 +260,8 @@ async def delete_question(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    guide = db.query(MarkingGuide).join(Exam).filter(
-        MarkingGuide.id == guide_id,
+    guide = db.query(Question).join(Exam).filter(
+        Question.id == guide_id,
         Exam.user_id == current_user.id
     ).first()
     if not guide:

@@ -19,5 +19,4 @@ class Exam(Base):
     user = relationship("User", back_populates="exams")
     documents = relationship("Document", back_populates="exam", cascade="all, delete-orphan")
     questions = relationship("Question", back_populates="exam", cascade="all, delete-orphan")
-    marking_guides = relationship("MarkingGuide", back_populates="exam", cascade="all, delete-orphan")
     llm_responses = relationship("LLMResponse", back_populates="exam", cascade="all, delete-orphan")

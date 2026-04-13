@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db
 from models.user import User
 from models.exam import Exam
-from models.marking_guide import MarkingGuide
+from models.question import Question
 from models.student_answer import StudentAnswer
 from models.document import Document
 from models.grade import Grade
@@ -88,10 +88,7 @@ async def download_student_pdf(
     for g in grades:
         sa = g.student_answer
         q = sa.question if sa else None
-        mg = db.query(MarkingGuide).filter(
-            MarkingGuide.exam_id == exam_id,
-            MarkingGuide.question_id == (q.id if q else None)
-        ).first() if q else None
+        mg = q
         grade_list.append({
             "question_number": q.question_number if q else "",
             "question_text": (q.question_text if q else None) or "",

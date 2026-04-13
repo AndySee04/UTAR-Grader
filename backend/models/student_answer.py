@@ -12,7 +12,7 @@ class StudentAnswer(Base):
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     document_id = Column(CHAR(36), ForeignKey("documents.id"), nullable=False)
     question_id = Column(CHAR(36), ForeignKey("questions.id"), nullable=False)
-    extracted_text_id = Column(CHAR(36), ForeignKey("extracted_text.id"), nullable=True)
+    extracted_text_id = Column(CHAR(36), ForeignKey("extracted_texts.id"), nullable=True)
     answer_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

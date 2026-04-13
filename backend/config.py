@@ -32,10 +32,10 @@ _load_env_file(BASE_DIR / ".env")
 _load_env_file(_BACKEND_DIR / ".env")
 
 # Database stored in backend folder
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/backend/auto_grade.db")
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/backend/utar_grader.db")
 
 # Normalize relative sqlite URLs from .env so startup is stable regardless of cwd.
-# Example: sqlite:///./backend/auto_grade.db -> absolute path under project root.
+# Example: sqlite:///./backend/utar_grader.db -> absolute path under project root.
 if DATABASE_URL.startswith("sqlite:///./"):
     rel_part = DATABASE_URL[len("sqlite:///./"):]
     abs_part = (BASE_DIR / rel_part).resolve()

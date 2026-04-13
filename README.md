@@ -165,7 +165,7 @@ Auto Exam Grading Website/
 └── README.md
 ```
 
-The SQLite database is created in `backend/auto_grade.db` by default.
+The SQLite database is created in `backend/utar_grader.db` by default.
 
 ## Development Progress
 

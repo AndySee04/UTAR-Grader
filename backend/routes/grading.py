@@ -16,8 +16,7 @@ from models.user import User
 from models.exam import Exam
 from models.document import Document
 from models.extracted_text import ExtractedText
-from models.questions import Question
-from models.marking_guide import MarkingGuide
+from models.question import Question
 from models.student_answer import StudentAnswer
 from models.grade import Grade
 from models.llm_response import LLMResponse
@@ -78,7 +77,7 @@ async def start_grading(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     
-    guide_count = db.query(MarkingGuide).filter(MarkingGuide.exam_id == exam_id).count()
+    guide_count = db.query(Question).filter(Question.exam_id == exam_id).count()
     if guide_count == 0:
         raise HTTPException(status_code=400, detail="No marking guide. Generate it first.")
     
@@ -127,8 +126,8 @@ async def grade_exam_background(exam_id: str, provider: str = "ollama", model: s
 
     try:
         # Get marking guide
-        guides = db.query(MarkingGuide).join(Question).filter(
-            MarkingGuide.exam_id == exam_id
+        guides = db.query(Question).filter(
+            Question.exam_id == exam_id
         ).order_by(Question.question_number).all()
 
         # Get student documents
@@ -204,7 +203,7 @@ async def grade_exam_background(exam_id: str, provider: str = "ollama", model: s
 async def grade_student_paper(
     db: Session,
     doc: Document,
-    guides: List[MarkingGuide],
+    guides: List[Question],
     exam_id: str,
     provider: str = "ollama",
     model: str = None
@@ -278,7 +277,7 @@ async def grade_student_paper(
         try:
             # Grade this question
             # Prefer the text from the student's cropped region(s) that match this question number.
-            qobj = guide.question
+            qobj = guide
             qnum = ((qobj.question_number if qobj else None) or "").strip()
             matched_regions = regions_by_qnum.get(qnum) if qnum else None
             if matched_regions:
@@ -394,7 +393,7 @@ async def grade_student_paper(
 
             student_ans = StudentAnswer(
                 document_id=doc.id,
-                question_id=guide.question_id,
+                question_id=guide.id,
                 extracted_text_id=extracted_ref_id,
                 # Store truncated student answer text for display in UI
                 answer_text=student_answer_text[:1000] if student_answer_text else None
@@ -451,10 +450,7 @@ async def get_exam_grades(
         for g in grades:
             sa = g.student_answer
             q = sa.question if sa else None
-            mg = db.query(MarkingGuide).filter(
-                MarkingGuide.exam_id == exam_id,
-                MarkingGuide.question_id == (q.id if q else None)
-            ).first() if q else None
+            mg = q
             
             grade_details.append(StudentGradeDetail(
                 id=str(g.id),
@@ -523,10 +519,7 @@ async def get_student_grades(
     for g in grades:
         sa = g.student_answer
         q = sa.question if sa else None
-        mg = db.query(MarkingGuide).filter(
-            MarkingGuide.exam_id == exam_id,
-            MarkingGuide.question_id == (q.id if q else None)
-        ).first() if q else None
+        mg = q
         
         grade_details.append(StudentGradeDetail(
             id=str(g.id),

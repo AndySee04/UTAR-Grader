@@ -7,7 +7,7 @@ from database import Base
 
 
 class ExtractedText(Base):
-    __tablename__ = "extracted_text"
+    __tablename__ = "extracted_texts"
 
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     document_id = Column(CHAR(36), ForeignKey("documents.id"), nullable=False)

@@ -22,5 +22,5 @@ def get_db():
 
 
 def init_db():
-    from models import user, exam, document, extracted_text, questions, marking_guide, llm_response, student_answer, grade
+    from models import user, exam, document, extracted_text, question, llm_response, student_answer, grade
     Base.metadata.create_all(bind=engine)

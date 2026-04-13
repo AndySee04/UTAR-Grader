@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Numeric, Boolean
 from sqlalchemy.dialects.sqlite import CHAR
 from sqlalchemy.orm import relationship
 from database import Base
@@ -13,9 +13,13 @@ class Question(Base):
     exam_id = Column(CHAR(36), ForeignKey("exams.id"), nullable=False)
     question_number = Column(String(50), nullable=False)
     question_text = Column(Text, nullable=True)
-    extracted_text_id = Column(CHAR(36), ForeignKey("extracted_text.id"), nullable=True)
+    question_type = Column(String(50), nullable=True)
+    answer_scheme = Column(Text, nullable=True)
+    max_marks = Column(Numeric(5, 2), nullable=True)
+    is_modified = Column(Boolean, default=False)
+    extracted_text_id = Column(CHAR(36), ForeignKey("extracted_texts.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    modified_at = Column(DateTime, nullable=True)
 
     exam = relationship("Exam", back_populates="questions")
-    marking_guides = relationship("MarkingGuide", back_populates="question", cascade="all, delete-orphan")
     student_answers = relationship("StudentAnswer", back_populates="question")

@@ -13,8 +13,7 @@ from pypdf import PdfReader, PdfWriter
 from models.document import Document
 from models.exam import Exam
 from models.grade import Grade
-from models.marking_guide import MarkingGuide
-from models.questions import Question
+from models.question import Question
 from models.student_answer import StudentAnswer
 from services.report_service import report_service
 
@@ -28,18 +27,13 @@ def _display_student_name(raw_name: str | None) -> str:
 def load_grade_report_context(
     db: Session, exam: Exam
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Document]]:
-    guides = (
-        db.query(MarkingGuide)
-        .filter(MarkingGuide.exam_id == exam.id)
-        .join(Question)
-        .order_by(Question.question_number)
-        .all()
-    )
+    guides = db.query(Question).filter(
+        Question.exam_id == exam.id
+    ).order_by(Question.question_number).all()
     questions = []
     for g in guides:
-        q = g.question
         questions.append({
-            "question_number": (q.question_number if q else "") or "",
+            "question_number": (g.question_number or ""),
             "max_marks": float(g.max_marks or 0),
         })
 
@@ -109,10 +103,7 @@ def build_all_pdfs_zip_bytes(db: Session, exam: Exam) -> Optional[Tuple[bytes, s
             for g in grades:
                 sa = g.student_answer
                 q = sa.question if sa else None
-                mg = db.query(MarkingGuide).filter(
-                    MarkingGuide.exam_id == exam.id,
-                    MarkingGuide.question_id == (q.id if q else None)
-                ).first() if q else None
+                mg = q
                 grade_list.append(
                     {
                         "question_number": q.question_number if q else "",
