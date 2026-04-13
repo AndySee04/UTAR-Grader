@@ -14,6 +14,9 @@ from models.user import User
 from models.exam import Exam
 from models.document import Document
 from models.extracted_text import ExtractedText
+from models.student_answer import StudentAnswer
+from models.grade import Grade
+from models.llm_response import LLMResponse
 from schemas.document import DocumentResponse, DocumentListResponse, CropRegion, CropRegionResponse
 from utils.auth import get_current_user
 from config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS
@@ -265,6 +268,21 @@ async def delete_document(
             detail="Document not found"
         )
     
+    # Capture linked LLM responses so we can remove newly-orphaned audit rows.
+    llm_response_ids = [
+        row[0]
+        for row in (
+            db.query(Grade.llm_response_id)
+            .join(StudentAnswer, Grade.student_answer_id == StudentAnswer.id)
+            .filter(
+                StudentAnswer.document_id == document.id,
+                Grade.llm_response_id.isnot(None)
+            )
+            .all()
+        )
+        if row and row[0]
+    ]
+
     # Delete file from disk
     try:
         if os.path.exists(document.file_path):
@@ -273,6 +291,16 @@ async def delete_document(
         pass
     
     db.delete(document)
+    db.flush()
+
+    # Remove LLM responses no longer referenced by any grade.
+    orphan_llm_ids = [
+        lrid for lrid in llm_response_ids
+        if db.query(Grade).filter(Grade.llm_response_id == lrid).first() is None
+    ]
+    if orphan_llm_ids:
+        db.query(LLMResponse).filter(LLMResponse.id.in_(orphan_llm_ids)).delete(synchronize_session=False)
+
     db.commit()
     return None
 

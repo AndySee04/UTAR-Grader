@@ -14,6 +14,7 @@ from models.user import User
 from models.exam import Exam
 from models.document import Document
 from models.extracted_text import ExtractedText
+from models.questions import Question
 from models.marking_guide import MarkingGuide
 from models.student_answer import StudentAnswer
 from models.grade import Grade
@@ -193,6 +194,7 @@ async def delete_exam(
         db.query(ExtractedText).filter(ExtractedText.document_id.in_(doc_ids)).delete(synchronize_session=False)
 
     db.query(MarkingGuide).filter(MarkingGuide.exam_id == exam.id).delete(synchronize_session=False)
+    db.query(Question).filter(Question.exam_id == exam.id).delete(synchronize_session=False)
     db.query(Document).filter(Document.exam_id == exam.id).delete(synchronize_session=False)
     db.delete(exam)
     db.commit()

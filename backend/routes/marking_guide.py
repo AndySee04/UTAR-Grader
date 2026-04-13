@@ -13,7 +13,10 @@ from models.user import User
 from models.exam import Exam
 from models.document import Document
 from models.extracted_text import ExtractedText
+from models.questions import Question
 from models.marking_guide import MarkingGuide
+from models.student_answer import StudentAnswer
+from models.grade import Grade
 from models.llm_response import LLMResponse
 from schemas.marking_guide import (
     MarkingGuideCreate, MarkingGuideUpdate, MarkingGuideResponse,
@@ -280,7 +283,47 @@ async def delete_question(
     if not guide:
         raise HTTPException(status_code=404, detail="Question not found")
     
+    exam_id = guide.exam_id
+    qnum = (guide.question_number or "").strip()
+
+    # Capture linked LLM responses before cascade deletes student answers/grades.
+    llm_response_ids = [
+        row[0]
+        for row in (
+            db.query(Grade.llm_response_id)
+            .join(StudentAnswer, Grade.student_answer_id == StudentAnswer.id)
+            .filter(
+                StudentAnswer.marking_guide_id == guide.id,
+                Grade.llm_response_id.isnot(None)
+            )
+            .all()
+        )
+        if row and row[0]
+    ]
+
     db.delete(guide)
+    db.flush()
+
+    # If no guide remains for this question number, delete canonical question row too.
+    if qnum:
+        still_exists = db.query(MarkingGuide).filter(
+            MarkingGuide.exam_id == exam_id,
+            MarkingGuide.question_number == qnum
+        ).first()
+        if not still_exists:
+            db.query(Question).filter(
+                Question.exam_id == exam_id,
+                Question.question_number == qnum
+            ).delete(synchronize_session=False)
+
+    # Remove LLM responses no longer referenced by any grade.
+    orphan_llm_ids = [
+        lrid for lrid in llm_response_ids
+        if db.query(Grade).filter(Grade.llm_response_id == lrid).first() is None
+    ]
+    if orphan_llm_ids:
+        db.query(LLMResponse).filter(LLMResponse.id.in_(orphan_llm_ids)).delete(synchronize_session=False)
+
     db.commit()
     
     return None
