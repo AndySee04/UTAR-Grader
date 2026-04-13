@@ -4,15 +4,24 @@ from __future__ import annotations
 
 import zipfile
 from io import BytesIO
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from pypdf import PdfReader, PdfWriter
+from models.document import Document
 from models.exam import Exam
 from models.grade import Grade, GradingSummary
 from models.marking_guide import MarkingGuide
 from models.student_answer import StudentAnswer
 from services.report_service import report_service
+
+def _display_student_name(raw_name: str | None) -> str:
+    n = (raw_name or "").strip()
+    if not n:
+        return "Unknown"
+    return Path(n).stem or n
 
 
 def load_grade_report_context(
@@ -105,14 +114,40 @@ def build_all_pdfs_zip_bytes(db: Session, exam: Exam) -> Optional[Tuple[bytes, s
 
             pdf_bytes = report_service.generate_student_pdf(
                 exam_name=exam.name,
-                student_name=summary.student_name or "Unknown",
+                student_name=_display_student_name(summary.student_name),
                 grades=grade_list,
                 total_score=float(summary.total_score or 0),
                 total_max=float(summary.total_max_marks or 0),
                 percentage=float(summary.percentage or 0),
             )
-            fname = f"{summary.student_name or 'student'}_{summary.document_id[:8]}.pdf"
-            zip_file.writestr(fname, pdf_bytes)
+            # Append student's original answer sheet at the back of the summary report.
+            merged = PdfWriter()
+            summary_reader = PdfReader(BytesIO(pdf_bytes))
+            for p in summary_reader.pages:
+                merged.add_page(p)
+
+            student_doc = (
+                db.query(Document)
+                .filter(
+                    Document.id == summary.document_id,
+                    Document.exam_id == exam.id,
+                    Document.doc_type == "student_answer",
+                )
+                .first()
+            )
+            if student_doc and student_doc.file_path:
+                try:
+                    original_reader = PdfReader(student_doc.file_path)
+                    for p in original_reader.pages:
+                        merged.add_page(p)
+                except Exception:
+                    # Keep summary pages even if original paper is unreadable.
+                    pass
+
+            out = BytesIO()
+            merged.write(out)
+            fname = f"{_display_student_name(summary.student_name) or 'student'}_{summary.document_id[:8]}.pdf"
+            zip_file.writestr(fname, out.getvalue())
 
     zip_buffer.seek(0)
     zip_name = f"{exam.name.replace(' ', '_')}_all_reports.zip"

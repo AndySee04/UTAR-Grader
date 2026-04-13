@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from io import BytesIO
+from pathlib import Path
 import sys
 import os
 from pypdf import PdfReader, PdfWriter
@@ -20,6 +21,13 @@ from services.report_service import report_service
 from services.grading_report_bundle import build_excel_bytes, build_all_pdfs_zip_bytes
 
 router = APIRouter()
+
+def _display_student_name(raw_name: str | None) -> str:
+    """Return display-safe name without file extension."""
+    n = (raw_name or "").strip()
+    if not n:
+        return "Unknown"
+    return Path(n).stem or n
 
 
 @router.get("/exams/{exam_id}/report/excel")
@@ -90,9 +98,10 @@ async def download_student_pdf(
         })
     
     # Generate PDF
+    display_name = _display_student_name(summary.student_name)
     summary_pdf_bytes = report_service.generate_student_pdf(
         exam_name=exam.name,
-        student_name=summary.student_name or "Unknown",
+        student_name=display_name,
         grades=grade_list,
         total_score=float(summary.total_score or 0),
         total_max=float(summary.total_max_marks or 0),
@@ -125,7 +134,7 @@ async def download_student_pdf(
     merged.write(merged_buffer)
     merged_pdf_bytes = merged_buffer.getvalue()
     
-    filename = f"{summary.student_name or 'student'}_report.pdf"
+    filename = f"{display_name}_report.pdf"
     
     return Response(
         content=merged_pdf_bytes,
