@@ -19,7 +19,6 @@ class ExtractedText(Base):
     raw_text = Column(Text, nullable=True)
     processed_text = Column(Text, nullable=True)
     marks = Column(Float, nullable=True)
-    confidence = Column(Float, nullable=True)
     extracted_at = Column(DateTime, default=datetime.utcnow)
 
     document = relationship("Document", back_populates="extracted_texts")

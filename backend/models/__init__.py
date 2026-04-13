@@ -2,6 +2,7 @@ from .user import User
 from .exam import Exam
 from .document import Document
 from .extracted_text import ExtractedText
+from .questions import Question
 from .marking_guide import MarkingGuide
 from .llm_response import LLMResponse
 from .student_answer import StudentAnswer

@@ -16,6 +16,7 @@ from models.user import User
 from models.exam import Exam
 from models.document import Document
 from models.extracted_text import ExtractedText
+from models.questions import Question
 from models.marking_guide import MarkingGuide
 from models.student_answer import StudentAnswer
 from models.grade import Grade, GradingSummary
@@ -45,6 +46,32 @@ def _quote_grounded(quote: str, student_answer: str) -> bool:
     q = _norm_ws(quote)
     sa = _norm_ws(student_answer)
     return bool(q) and (q in sa)
+
+
+def _resolve_question_id(db: Session, exam_id: str, guide: MarkingGuide, extracted_text_id: str | None) -> str | None:
+    """Get or create canonical question text row and return its id."""
+    qnum = (guide.question_number or "").strip()
+    if not qnum:
+        return None
+
+    qt = (
+        db.query(Question)
+        .filter(
+            Question.exam_id == exam_id,
+            Question.question_number == qnum
+        )
+        .first()
+    )
+    if not qt:
+        qt = Question(
+            exam_id=exam_id,
+            question_number=qnum,
+            question_text=guide.question_text,
+            extracted_text_id=extracted_text_id
+        )
+        db.add(qt)
+        db.flush()
+    return qt.id
 
 
 @router.post("/exams/{exam_id}/grade", response_model=StartGradingResponse)
@@ -389,6 +416,7 @@ async def grade_student_paper(
             student_ans = StudentAnswer(
                 document_id=doc.id,
                 marking_guide_id=guide.id,
+                question_id=_resolve_question_id(db, exam_id, guide, extracted_ref_id),
                 extracted_text_id=extracted_ref_id,
                 # Store truncated student answer text for display in UI
                 answer_text=student_answer_text[:1000] if student_answer_text else None
