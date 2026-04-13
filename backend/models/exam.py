@@ -21,4 +21,3 @@ class Exam(Base):
     questions = relationship("Question", back_populates="exam", cascade="all, delete-orphan")
     marking_guides = relationship("MarkingGuide", back_populates="exam", cascade="all, delete-orphan")
     llm_responses = relationship("LLMResponse", back_populates="exam", cascade="all, delete-orphan")
-    grading_summaries = relationship("GradingSummary", back_populates="exam", cascade="all, delete-orphan")

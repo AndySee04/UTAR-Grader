@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from pypdf import PdfReader, PdfWriter
 from models.document import Document
 from models.exam import Exam
-from models.grade import Grade, GradingSummary
+from models.grade import Grade
 from models.marking_guide import MarkingGuide
+from models.questions import Question
 from models.student_answer import StudentAnswer
 from services.report_service import report_service
 
@@ -26,49 +27,57 @@ def _display_student_name(raw_name: str | None) -> str:
 
 def load_grade_report_context(
     db: Session, exam: Exam
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[GradingSummary]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Document]]:
     guides = (
         db.query(MarkingGuide)
         .filter(MarkingGuide.exam_id == exam.id)
-        .order_by(MarkingGuide.question_number)
+        .join(Question)
+        .order_by(Question.question_number)
         .all()
     )
-    questions = [
-        {"question_number": g.question_number, "max_marks": float(g.max_marks or 0)}
-        for g in guides
-    ]
+    questions = []
+    for g in guides:
+        q = g.question
+        questions.append({
+            "question_number": (q.question_number if q else "") or "",
+            "max_marks": float(g.max_marks or 0),
+        })
 
-    summaries = (
-        db.query(GradingSummary).filter(GradingSummary.exam_id == exam.id).all()
-    )
+    docs = db.query(Document).filter(
+        Document.exam_id == exam.id,
+        Document.doc_type == "student_answer"
+    ).all()
 
     students: List[Dict[str, Any]] = []
-    for summary in summaries:
+    for doc in docs:
         grades = (
             db.query(Grade)
             .join(StudentAnswer)
-            .filter(StudentAnswer.document_id == summary.document_id)
+            .filter(StudentAnswer.document_id == doc.id)
             .all()
         )
         grade_list = []
         for g in grades:
-            mg = g.student_answer.marking_guide if g.student_answer else None
+            q = g.student_answer.question if g.student_answer else None
             grade_list.append(
                 {
-                    "question_number": mg.question_number if mg else "",
+                    "question_number": q.question_number if q else "",
                     "score": float(g.score or 0),
                 }
             )
         students.append(
             {
-                "student_name": summary.student_name or "Unknown",
-                "total_score": float(summary.total_score or 0),
-                "percentage": float(summary.percentage or 0),
+                "student_name": doc.file_name or "Unknown",
+                "total_score": float(sum(float(g.score or 0) for g in grades)),
+                "percentage": (
+                    (float(sum(float(g.score or 0) for g in grades)) / float(sum(float(g.max_marks or 0) for g in grades)) * 100)
+                    if float(sum(float(g.max_marks or 0) for g in grades)) > 0 else 0.0
+                ),
                 "grades": grade_list,
             }
         )
 
-    return questions, students, summaries
+    return questions, students, docs
 
 
 def build_excel_bytes(db: Session, exam: Exam) -> Tuple[bytes, str]:
@@ -83,27 +92,31 @@ def build_excel_bytes(db: Session, exam: Exam) -> Tuple[bytes, str]:
 
 
 def build_all_pdfs_zip_bytes(db: Session, exam: Exam) -> Optional[Tuple[bytes, str]]:
-    _, _, summaries = load_grade_report_context(db, exam)
-    if not summaries:
+    _, _, docs = load_grade_report_context(db, exam)
+    if not docs:
         return None
 
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for summary in summaries:
+        for doc in docs:
             grades = (
                 db.query(Grade)
                 .join(StudentAnswer)
-                .filter(StudentAnswer.document_id == summary.document_id)
+                .filter(StudentAnswer.document_id == doc.id)
                 .all()
             )
             grade_list = []
             for g in grades:
-                mg = g.student_answer.marking_guide if g.student_answer else None
                 sa = g.student_answer
+                q = sa.question if sa else None
+                mg = db.query(MarkingGuide).filter(
+                    MarkingGuide.exam_id == exam.id,
+                    MarkingGuide.question_id == (q.id if q else None)
+                ).first() if q else None
                 grade_list.append(
                     {
-                        "question_number": mg.question_number if mg else "",
-                        "question_text": (mg.question_text if mg else None) or "",
+                        "question_number": q.question_number if q else "",
+                        "question_text": (q.question_text if q else None) or "",
                         "score": float(g.score or 0),
                         "max_marks": float(g.max_marks or 0),
                         "confidence": float(g.confidence) if g.confidence is not None else None,
@@ -114,11 +127,14 @@ def build_all_pdfs_zip_bytes(db: Session, exam: Exam) -> Optional[Tuple[bytes, s
 
             pdf_bytes = report_service.generate_student_pdf(
                 exam_name=exam.name,
-                student_name=_display_student_name(summary.student_name),
+                student_name=_display_student_name(doc.file_name),
                 grades=grade_list,
-                total_score=float(summary.total_score or 0),
-                total_max=float(summary.total_max_marks or 0),
-                percentage=float(summary.percentage or 0),
+                total_score=float(sum(float(g.score or 0) for g in grades)),
+                total_max=float(sum(float(g.max_marks or 0) for g in grades)),
+                percentage=(
+                    (float(sum(float(g.score or 0) for g in grades)) / float(sum(float(g.max_marks or 0) for g in grades)) * 100)
+                    if float(sum(float(g.max_marks or 0) for g in grades)) > 0 else 0.0
+                ),
             )
             # Append student's original answer sheet at the back of the summary report.
             merged = PdfWriter()
@@ -129,7 +145,7 @@ def build_all_pdfs_zip_bytes(db: Session, exam: Exam) -> Optional[Tuple[bytes, s
             student_doc = (
                 db.query(Document)
                 .filter(
-                    Document.id == summary.document_id,
+                    Document.id == doc.id,
                     Document.exam_id == exam.id,
                     Document.doc_type == "student_answer",
                 )
@@ -146,7 +162,7 @@ def build_all_pdfs_zip_bytes(db: Session, exam: Exam) -> Optional[Tuple[bytes, s
 
             out = BytesIO()
             merged.write(out)
-            fname = f"{_display_student_name(summary.student_name) or 'student'}_{summary.document_id[:8]}.pdf"
+            fname = f"{_display_student_name(doc.file_name) or 'student'}_{doc.id[:8]}.pdf"
             zip_file.writestr(fname, out.getvalue())
 
     zip_buffer.seek(0)

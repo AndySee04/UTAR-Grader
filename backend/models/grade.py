@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Numeric, Boolean
+from sqlalchemy import Column, DateTime, ForeignKey, Text, Numeric, Boolean
 from sqlalchemy.dialects.sqlite import CHAR
 from sqlalchemy.orm import relationship
 from database import Base
@@ -23,19 +23,3 @@ class Grade(Base):
 
     student_answer = relationship("StudentAnswer", back_populates="grade")
     llm_response = relationship("LLMResponse", back_populates="grades")
-
-
-class GradingSummary(Base):
-    __tablename__ = "grading_summary"
-
-    id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    exam_id = Column(CHAR(36), ForeignKey("exams.id"), nullable=False)
-    document_id = Column(CHAR(36), ForeignKey("documents.id"), nullable=False)
-    student_name = Column(String(255), nullable=True)
-    total_score = Column(Numeric(5, 2), nullable=True)
-    total_max_marks = Column(Numeric(5, 2), nullable=True)
-    percentage = Column(Numeric(5, 2), nullable=True)
-    graded_at = Column(DateTime, default=datetime.utcnow)
-
-    exam = relationship("Exam", back_populates="grading_summaries")
-    document = relationship("Document", back_populates="grading_summary")

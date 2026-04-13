@@ -20,4 +20,3 @@ class Document(Base):
     exam = relationship("Exam", back_populates="documents")
     extracted_texts = relationship("ExtractedText", back_populates="document", cascade="all, delete-orphan")
     student_answers = relationship("StudentAnswer", back_populates="document", cascade="all, delete-orphan")
-    grading_summary = relationship("GradingSummary", back_populates="document", uselist=False, cascade="all, delete-orphan")

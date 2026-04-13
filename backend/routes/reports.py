@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from io import BytesIO
 from pathlib import Path
 import sys
@@ -15,7 +16,7 @@ from models.exam import Exam
 from models.marking_guide import MarkingGuide
 from models.student_answer import StudentAnswer
 from models.document import Document
-from models.grade import Grade, GradingSummary
+from models.grade import Grade
 from utils.auth import get_current_user
 from services.report_service import report_service
 from services.grading_report_bundle import build_excel_bytes, build_all_pdfs_zip_bytes
@@ -70,12 +71,12 @@ async def download_student_pdf(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     
-    summary = db.query(GradingSummary).filter(
-        GradingSummary.exam_id == exam_id,
-        GradingSummary.document_id == document_id
+    student_doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.exam_id == exam_id,
+        Document.doc_type == "student_answer"
     ).first()
-    
-    if not summary:
+    if not student_doc:
         raise HTTPException(status_code=404, detail="Student grades not found")
     
     # Get grades
@@ -85,11 +86,15 @@ async def download_student_pdf(
     
     grade_list = []
     for g in grades:
-        mg = g.student_answer.marking_guide if g.student_answer else None
         sa = g.student_answer
+        q = sa.question if sa else None
+        mg = db.query(MarkingGuide).filter(
+            MarkingGuide.exam_id == exam_id,
+            MarkingGuide.question_id == (q.id if q else None)
+        ).first() if q else None
         grade_list.append({
-            "question_number": mg.question_number if mg else "",
-            "question_text": (mg.question_text if mg else None) or "",
+            "question_number": q.question_number if q else "",
+            "question_text": (q.question_text if q else None) or "",
             "score": float(g.score or 0),
             "max_marks": float(g.max_marks or 0),
             "confidence": float(g.confidence) if g.confidence is not None else None,
@@ -97,27 +102,27 @@ async def download_student_pdf(
             "feedback": g.feedback or ""
         })
     
-    # Generate PDF
-    display_name = _display_student_name(summary.student_name)
+    total_score, total_max = db.query(
+        func.coalesce(func.sum(Grade.score), 0),
+        func.coalesce(func.sum(Grade.max_marks), 0)
+    ).join(StudentAnswer).filter(
+        StudentAnswer.document_id == document_id
+    ).first() or (0, 0)
+    total_score = float(total_score or 0)
+    total_max = float(total_max or 0)
+    percentage = (total_score / total_max * 100) if total_max > 0 else 0.0
+
+    display_name = _display_student_name(student_doc.file_name)
     summary_pdf_bytes = report_service.generate_student_pdf(
         exam_name=exam.name,
         student_name=display_name,
         grades=grade_list,
-        total_score=float(summary.total_score or 0),
-        total_max=float(summary.total_max_marks or 0),
-        percentage=float(summary.percentage or 0)
+        total_score=total_score,
+        total_max=total_max,
+        percentage=percentage
     )
 
     # Append student's original uploaded paper to the end of the report.
-    student_doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.exam_id == exam_id,
-        Document.doc_type == "student_answer"
-    ).first()
-
-    if not student_doc:
-        raise HTTPException(status_code=404, detail="Student answer document not found")
-
     merged = PdfWriter()
     summary_reader = PdfReader(BytesIO(summary_pdf_bytes))
     for page in summary_reader.pages:

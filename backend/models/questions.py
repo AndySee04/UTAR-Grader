@@ -17,4 +17,5 @@ class Question(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     exam = relationship("Exam", back_populates="questions")
+    marking_guides = relationship("MarkingGuide", back_populates="question", cascade="all, delete-orphan")
     student_answers = relationship("StudentAnswer", back_populates="question")

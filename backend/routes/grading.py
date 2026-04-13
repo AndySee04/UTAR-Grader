@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Tuple
@@ -19,7 +19,7 @@ from models.extracted_text import ExtractedText
 from models.questions import Question
 from models.marking_guide import MarkingGuide
 from models.student_answer import StudentAnswer
-from models.grade import Grade, GradingSummary
+from models.grade import Grade
 from models.llm_response import LLMResponse
 from schemas.grade import (
     GradeResponse, GradeUpdate, StudentGradeDetail,
@@ -30,48 +30,34 @@ from utils.auth import get_current_user
 from services.llm_service import llm_service
 from services.pdf_service import pdf_service
 from services.ocr_service import ocr_service
-from services.cv_service import cv_service
 from config import smtp_configured
 from services.email_service import send_grading_complete_email
 from services.grading_report_bundle import build_excel_bytes, build_all_pdfs_zip_bytes
 
 router = APIRouter()
 
+
 def _norm_ws(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip()).lower()
 
 
 def _quote_grounded(quote: str, student_answer: str) -> bool:
-    # whitespace-normalized substring match
     q = _norm_ws(quote)
     sa = _norm_ws(student_answer)
     return bool(q) and (q in sa)
 
 
-def _resolve_question_id(db: Session, exam_id: str, guide: MarkingGuide, extracted_text_id: str | None) -> str | None:
-    """Get or create canonical question text row and return its id."""
-    qnum = (guide.question_number or "").strip()
-    if not qnum:
-        return None
-
-    qt = (
-        db.query(Question)
-        .filter(
-            Question.exam_id == exam_id,
-            Question.question_number == qnum
-        )
-        .first()
-    )
-    if not qt:
-        qt = Question(
-            exam_id=exam_id,
-            question_number=qnum,
-            question_text=guide.question_text,
-            extracted_text_id=extracted_text_id
-        )
-        db.add(qt)
-        db.flush()
-    return qt.id
+def _student_totals(db: Session, document_id: str) -> tuple[float, float, float]:
+    score_sum, max_sum = db.query(
+        func.coalesce(func.sum(Grade.score), 0),
+        func.coalesce(func.sum(Grade.max_marks), 0),
+    ).join(StudentAnswer).filter(
+        StudentAnswer.document_id == document_id
+    ).first() or (0, 0)
+    total_score = float(score_sum or 0)
+    total_max = float(max_sum or 0)
+    pct = (total_score / total_max * 100) if total_max > 0 else 0.0
+    return total_score, total_max, pct
 
 
 @router.post("/exams/{exam_id}/grade", response_model=StartGradingResponse)
@@ -92,7 +78,6 @@ async def start_grading(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     
-    # Check marking guide exists
     guide_count = db.query(MarkingGuide).filter(MarkingGuide.exam_id == exam_id).count()
     if guide_count == 0:
         raise HTTPException(status_code=400, detail="No marking guide. Generate it first.")
@@ -132,7 +117,6 @@ async def start_grading(
 
 
 async def grade_exam_background(exam_id: str, provider: str = "ollama", model: str = None):
-    """Background task to grade all student papers."""
     from database import SessionLocal
     db = SessionLocal()
 
@@ -143,9 +127,9 @@ async def grade_exam_background(exam_id: str, provider: str = "ollama", model: s
 
     try:
         # Get marking guide
-        guides = db.query(MarkingGuide).filter(
+        guides = db.query(MarkingGuide).join(Question).filter(
             MarkingGuide.exam_id == exam_id
-        ).order_by(MarkingGuide.question_number).all()
+        ).order_by(Question.question_number).all()
 
         # Get student documents
         student_docs = db.query(Document).filter(
@@ -225,7 +209,6 @@ async def grade_student_paper(
     provider: str = "ollama",
     model: str = None
 ):
-    """Grade a single student's paper."""
 
     # Before grading, remove any previous results for this student document so
     # re-running grading replaces the old results instead of duplicating them.
@@ -241,11 +224,6 @@ async def grade_student_paper(
         db.query(StudentAnswer).filter(
             StudentAnswer.id.in_(old_answer_ids)
         ).delete(synchronize_session=False)
-
-    db.query(GradingSummary).filter(
-        GradingSummary.exam_id == exam_id,
-        GradingSummary.document_id == doc.id
-    ).delete(synchronize_session=False)
 
     db.commit()
 
@@ -300,7 +278,8 @@ async def grade_student_paper(
         try:
             # Grade this question
             # Prefer the text from the student's cropped region(s) that match this question number.
-            qnum = (guide.question_number or "").strip()
+            qobj = guide.question
+            qnum = ((qobj.question_number if qobj else None) or "").strip()
             matched_regions = regions_by_qnum.get(qnum) if qnum else None
             if matched_regions:
                 student_answer_text = "\n".join([r.raw_text or "" for r in matched_regions])
@@ -311,7 +290,7 @@ async def grade_student_paper(
                 extracted_ref_id = None
 
             result = await llm_service.grade_answer(
-                question=guide.question_text or "",
+                question=(qobj.question_text if qobj else "") or "",
                 answer_scheme=guide.answer_scheme or "",
                 student_answer=student_answer_text,
                 max_marks=float(guide.max_marks or 0),
@@ -369,7 +348,7 @@ async def grade_student_paper(
                         preview = raw[:400]
                         print(
                             f"[LLM grading warning] Could not parse JSON/score for "
-                            f"question {guide.question_number!r}: raw_response preview={preview!r}"
+                            f"question {qnum!r}: raw_response preview={preview!r}"
                         )
                     except Exception:
                         pass
@@ -405,7 +384,7 @@ async def grade_student_paper(
             llm_resp = LLMResponse(
                 exam_id=exam_id,
                 request_type="grading",
-                input_text=f"Q: {guide.question_text}\nStudent: {student_answer_text[:1000]}",
+                input_text=f"Q: {(qobj.question_text if qobj else '')}\nStudent: {student_answer_text[:1000]}",
                 raw_response=result.raw_response,
                 parsed_response=parsed,
                 model_used=f"{provider}:{result.model_used}",
@@ -415,8 +394,7 @@ async def grade_student_paper(
 
             student_ans = StudentAnswer(
                 document_id=doc.id,
-                marking_guide_id=guide.id,
-                question_id=_resolve_question_id(db, exam_id, guide, extracted_ref_id),
+                question_id=guide.question_id,
                 extracted_text_id=extracted_ref_id,
                 # Store truncated student answer text for display in UI
                 answer_text=student_answer_text[:1000] if student_answer_text else None
@@ -438,20 +416,8 @@ async def grade_student_paper(
             total_max += max_marks
             
         except Exception as e:
-            print(f"Error grading question {guide.question_number}: {e}")
-    
-    # Create summary
-    percentage = (total_score / total_max * 100) if total_max > 0 else Decimal(0)
-    
-    summary = GradingSummary(
-        exam_id=exam_id,
-        document_id=doc.id,
-        student_name=doc.file_name,
-        total_score=total_score,
-        total_max_marks=total_max,
-        percentage=percentage
-    )
-    db.add(summary)
+            print(f"Error grading question {qnum}: {e}")
+
     db.commit()
 
 
@@ -470,38 +436,30 @@ async def get_exam_grades(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     
-    # Get summaries
-    summaries = db.query(GradingSummary).filter(
-        GradingSummary.exam_id == exam_id
-    ).all()
-    
-    # Get total students
-    total_students = db.query(Document).filter(
+    student_docs = db.query(Document).filter(
         Document.exam_id == exam_id,
         Document.doc_type == "student_answer"
-    ).count()
-    
-    # Calculate average
-    avg_pct = db.query(func.avg(GradingSummary.percentage)).filter(
-        GradingSummary.exam_id == exam_id
-    ).scalar()
-    
+    ).all()
+
     students = []
-    for summary in summaries:
-        # Get detailed grades for this student
+    for doc in student_docs:
         grades = db.query(Grade).join(StudentAnswer).filter(
-            StudentAnswer.document_id == summary.document_id
+            StudentAnswer.document_id == doc.id
         ).all()
         
         grade_details = []
         for g in grades:
             sa = g.student_answer
-            mg = sa.marking_guide if sa else None
+            q = sa.question if sa else None
+            mg = db.query(MarkingGuide).filter(
+                MarkingGuide.exam_id == exam_id,
+                MarkingGuide.question_id == (q.id if q else None)
+            ).first() if q else None
             
             grade_details.append(StudentGradeDetail(
                 id=str(g.id),
-                question_number=mg.question_number if mg else "",
-                question_text=mg.question_text if mg else "",
+                question_number=q.question_number if q else "",
+                question_text=q.question_text if q else "",
                 answer_scheme=mg.answer_scheme if mg else "",
                 student_answer=sa.answer_text[:200] if sa and sa.answer_text else "",
                 score=float(g.score) if g.score is not None else None,
@@ -511,22 +469,24 @@ async def get_exam_grades(
                 is_overridden=g.is_overridden
             ))
         
+        total_score, total_max, pct = _student_totals(db, doc.id)
         students.append(StudentGradeSummary(
-            document_id=summary.document_id,
-            student_name=summary.student_name,
-            total_score=float(summary.total_score or 0),
-            total_max_marks=float(summary.total_max_marks or 0),
-            percentage=float(summary.percentage or 0),
+            document_id=doc.id,
+            student_name=doc.file_name,
+            total_score=total_score,
+            total_max_marks=total_max,
+            percentage=pct,
             grades=grade_details
         ))
-    
+    avg_pct = (sum(s.percentage for s in students) / len(students)) if students else None
+
     return ExamGradingSummary(
         exam_id=exam_id,
         exam_name=exam.name,
         status=exam.status,
-        total_students=total_students,
-        graded_students=len(summaries),
-        average_percentage=float(avg_pct) if avg_pct else None,
+        total_students=len(student_docs),
+        graded_students=len(students),
+        average_percentage=float(avg_pct) if avg_pct is not None else None,
         students=students
     )
 
@@ -547,12 +507,12 @@ async def get_student_grades(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     
-    summary = db.query(GradingSummary).filter(
-        GradingSummary.exam_id == exam_id,
-        GradingSummary.document_id == document_id
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.exam_id == exam_id,
+        Document.doc_type == "student_answer"
     ).first()
-    
-    if not summary:
+    if not doc:
         raise HTTPException(status_code=404, detail="Student grades not found")
     
     grades = db.query(Grade).join(StudentAnswer).filter(
@@ -562,12 +522,16 @@ async def get_student_grades(
     grade_details = []
     for g in grades:
         sa = g.student_answer
-        mg = sa.marking_guide if sa else None
+        q = sa.question if sa else None
+        mg = db.query(MarkingGuide).filter(
+            MarkingGuide.exam_id == exam_id,
+            MarkingGuide.question_id == (q.id if q else None)
+        ).first() if q else None
         
         grade_details.append(StudentGradeDetail(
             id=str(g.id),
-            question_number=mg.question_number if mg else "",
-            question_text=mg.question_text if mg else "",
+            question_number=q.question_number if q else "",
+            question_text=q.question_text if q else "",
             answer_scheme=mg.answer_scheme if mg else "",
             student_answer=sa.answer_text if sa else "",
             score=float(g.score) if g.score is not None else None,
@@ -577,12 +541,13 @@ async def get_student_grades(
             is_overridden=g.is_overridden
         ))
     
+    total_score, total_max, pct = _student_totals(db, document_id)
     return StudentGradeSummary(
         document_id=document_id,
-        student_name=summary.student_name,
-        total_score=float(summary.total_score or 0),
-        total_max_marks=float(summary.total_max_marks or 0),
-        percentage=float(summary.percentage or 0),
+        student_name=doc.file_name,
+        total_score=total_score,
+        total_max_marks=total_max,
+        percentage=pct,
         grades=grade_details
     )
 
@@ -615,26 +580,6 @@ async def override_grade(
     
     db.commit()
     
-    # Update summary
-    student_answer = grade.student_answer
-    if student_answer:
-        summary = db.query(GradingSummary).filter(
-            GradingSummary.document_id == student_answer.document_id
-        ).first()
-        
-        if summary:
-            # Recalculate totals
-            all_grades = db.query(Grade).join(StudentAnswer).filter(
-                StudentAnswer.document_id == student_answer.document_id
-            ).all()
-            
-            total_score = sum(Decimal(str(g.score or 0)) for g in all_grades)
-            total_max = sum(Decimal(str(g.max_marks or 0)) for g in all_grades)
-            
-            summary.total_score = total_score
-            summary.percentage = (total_score / total_max * 100) if total_max > 0 else Decimal(0)
-            db.commit()
-    
     db.refresh(grade)
     return grade
 
@@ -659,9 +604,10 @@ async def get_grading_progress(
         Document.doc_type == "student_answer"
     ).count()
     
-    graded = db.query(GradingSummary).filter(
-        GradingSummary.exam_id == exam_id
-    ).count()
+    graded = db.query(Document).join(StudentAnswer).filter(
+        Document.exam_id == exam_id,
+        Document.doc_type == "student_answer"
+    ).distinct().count()
     
     return {
         "exam_id": exam_id,

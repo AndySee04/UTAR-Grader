@@ -19,7 +19,7 @@ from models.marking_guide import MarkingGuide
 from models.student_answer import StudentAnswer
 from models.grade import Grade
 from models.llm_response import LLMResponse
-from models.grade import GradingSummary
+from models.questions import Question
 from schemas.exam import ExamCreate, ExamUpdate, ExamResponse, ExamListResponse, ExamDetailResponse
 from utils.auth import get_current_user
 from config import UPLOAD_DIR
@@ -98,10 +98,18 @@ async def get_exam(
         Document.doc_type == "student_answer"
     ).count()
     
-    # Get grading stats
-    graded_count = db.query(GradingSummary).filter(GradingSummary.exam_id == exam.id).count()
-    avg_result = db.query(func.avg(GradingSummary.percentage)).filter(
-        GradingSummary.exam_id == exam.id
+    # Get grading stats from live grade aggregation
+    graded_count = db.query(Document).join(StudentAnswer).filter(
+        Document.exam_id == exam.id,
+        Document.doc_type == "student_answer"
+    ).distinct().count()
+    avg_result = db.query(func.avg((Grade.score / func.nullif(Grade.max_marks, 0)) * 100)).join(
+        StudentAnswer, Grade.student_answer_id == StudentAnswer.id
+    ).join(
+        Document, StudentAnswer.document_id == Document.id
+    ).filter(
+        Document.exam_id == exam.id,
+        Grade.max_marks > 0
     ).scalar()
     
     return ExamDetailResponse(
@@ -173,19 +181,14 @@ async def delete_exam(
     doc_ids = [
         d[0] for d in db.query(Document.id).filter(Document.exam_id == exam.id).all()
     ]
-    guide_ids = [
-        g[0] for g in db.query(MarkingGuide.id).filter(MarkingGuide.exam_id == exam.id).all()
-    ]
-
-    # Student answers linked by document and/or marking guide
+    # Student answers linked by document only in normalized schema
     sa_query = db.query(StudentAnswer).filter(
-        (StudentAnswer.document_id.in_(doc_ids)) | (StudentAnswer.marking_guide_id.in_(guide_ids))
-    ) if (doc_ids or guide_ids) else None
+        StudentAnswer.document_id.in_(doc_ids)
+    ) if doc_ids else None
     sa_ids = [sa.id for sa in sa_query.all()] if sa_query is not None else []
 
     if sa_ids:
         db.query(Grade).filter(Grade.student_answer_id.in_(sa_ids)).delete(synchronize_session=False)
-    db.query(GradingSummary).filter(GradingSummary.exam_id == exam.id).delete(synchronize_session=False)
     db.query(LLMResponse).filter(LLMResponse.exam_id == exam.id).delete(synchronize_session=False)
 
     if sa_ids:

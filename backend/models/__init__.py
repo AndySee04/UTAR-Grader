@@ -6,4 +6,4 @@ from .questions import Question
 from .marking_guide import MarkingGuide
 from .llm_response import LLMResponse
 from .student_answer import StudentAnswer
-from .grade import Grade, GradingSummary
+from .grade import Grade

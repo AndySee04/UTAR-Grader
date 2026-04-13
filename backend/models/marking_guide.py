@@ -11,8 +11,7 @@ class MarkingGuide(Base):
 
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     exam_id = Column(CHAR(36), ForeignKey("exams.id"), nullable=False)
-    question_number = Column(String(50), nullable=False)
-    question_text = Column(Text, nullable=True)
+    question_id = Column(CHAR(36), ForeignKey("questions.id"), nullable=False)
     question_type = Column(String(50), nullable=True)  # mcq, structured, open_ended
     answer_scheme = Column(Text, nullable=True)
     max_marks = Column(Numeric(5, 2), nullable=True)
@@ -21,4 +20,4 @@ class MarkingGuide(Base):
     modified_at = Column(DateTime, nullable=True)
 
     exam = relationship("Exam", back_populates="marking_guides")
-    student_answers = relationship("StudentAnswer", back_populates="marking_guide", cascade="all, delete-orphan")
+    question = relationship("Question", back_populates="marking_guides")
