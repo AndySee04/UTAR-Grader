@@ -418,7 +418,7 @@ async def grade_student_paper(
     summary = GradingSummary(
         exam_id=exam_id,
         document_id=doc.id,
-        student_name=doc.student_name,
+        student_name=doc.file_name,
         total_score=total_score,
         total_max_marks=total_max,
         percentage=percentage

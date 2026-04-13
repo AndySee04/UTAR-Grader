@@ -38,7 +38,7 @@ async def upload_document(
     exam_id: str,
     file: UploadFile = File(...),
     doc_type: str = Form(...),
-    student_name: Optional[str] = Form(None),
+    file_name: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -107,7 +107,7 @@ async def upload_document(
         exam_id=exam_id,
         doc_type=doc_type,
         file_path=str(file_path),
-        student_name=student_name,
+        file_name=(file_name or file.filename or "").strip() or None,
         page_count=page_count
     )
     
@@ -153,8 +153,8 @@ async def upload_multiple_documents(
     for file in files:
         ext = validate_file(file)
         
-        # Extract student name from filename (remove extension)
-        student_name = os.path.splitext(file.filename)[0]
+        # Preserve the original uploaded filename for display/tracking
+        file_name = (file.filename or "").strip() or None
         
         file_id = str(uuid.uuid4())
         filename = f"{file_id}{ext}"
@@ -184,7 +184,7 @@ async def upload_multiple_documents(
             exam_id=exam_id,
             doc_type=doc_type,
             file_path=str(file_path),
-            student_name=student_name,
+            file_name=file_name,
             page_count=page_count
         )
         

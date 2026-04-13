@@ -5,7 +5,7 @@ from typing import Optional, List
 
 class DocumentUpload(BaseModel):
     doc_type: str = Field(..., pattern="^(question_paper|answer_scheme|student_answer)$")
-    student_name: Optional[str] = Field(None, max_length=255)
+    file_name: Optional[str] = Field(None, max_length=255)
 
 
 class DocumentResponse(BaseModel):
@@ -13,7 +13,7 @@ class DocumentResponse(BaseModel):
     exam_id: str
     doc_type: str
     file_path: str
-    student_name: Optional[str]
+    file_name: Optional[str]
     page_count: Optional[int]
     uploaded_at: datetime
 
@@ -24,7 +24,7 @@ class DocumentResponse(BaseModel):
 class DocumentListResponse(BaseModel):
     id: str
     doc_type: str
-    student_name: Optional[str]
+    file_name: Optional[str]
     page_count: Optional[int]
     uploaded_at: datetime
 

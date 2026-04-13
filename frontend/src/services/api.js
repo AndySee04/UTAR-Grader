@@ -60,11 +60,11 @@ export const examsAPI = {
 
 // Documents
 export const documentsAPI = {
-  upload: (examId, file, docType, studentName) => {
+  upload: (examId, file, docType, fileName) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("doc_type", docType);
-    if (studentName) formData.append("student_name", studentName);
+    if (fileName) formData.append("file_name", fileName);
     return api.post(`/exams/${examId}/upload`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });

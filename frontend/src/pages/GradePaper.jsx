@@ -1322,7 +1322,7 @@ function GradePaper() {
                   .sort((a, b) => {
                     const aDone = croppedDocs.has(a.id)
                     const bDone = croppedDocs.has(b.id)
-                    if (aDone === bDone) return (a.student_name || '').localeCompare(b.student_name || '')
+                    if (aDone === bDone) return (a.file_name || '').localeCompare(b.file_name || '')
                     return aDone ? 1 : -1
                   })
                   .map((doc) => (
@@ -1345,7 +1345,7 @@ function GradePaper() {
                         </svg>
                         <div className="flex flex-col">
                           <span className="text-sm font-medium text-gray-700 dark:text-slate-300 truncate">
-                            {doc.student_name || 'Student Document'}
+                            {doc.file_name || 'Student Document'}
                           </span>
                           <span className={`text-[11px] font-medium ${
                             croppedDocs.has(doc.id) ? 'text-emerald-600' : 'text-amber-600'

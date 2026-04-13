@@ -13,7 +13,7 @@ class Document(Base):
     exam_id = Column(CHAR(36), ForeignKey("exams.id"), nullable=False)
     doc_type = Column(String(50), nullable=False)  # question_paper, answer_scheme, student_answer
     file_path = Column(String(500), nullable=False)
-    student_name = Column(String(255), nullable=True)
+    file_name = Column(String(255), nullable=True)
     page_count = Column(Integer, nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
