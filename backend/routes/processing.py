@@ -254,9 +254,9 @@ async def update_region_text(
     # Allow updating OCR text and optional metadata like question_number / marks
     if "raw_text" in body:
         region.raw_text = body["raw_text"]
-        # Keep processed_text in sync with manual edits so regenerated
-        # marking guides always reflect the latest teacher-corrected text.
-        region.processed_text = body["raw_text"]
+        # Manual edits become the new OCR baseline; clear derived text
+        # to avoid storing duplicate raw/processed values.
+        region.processed_text = None
     synced_student_regions = 0
     if "question_number" in body:
         old_question_number = (region.question_number or "").strip()
@@ -453,7 +453,10 @@ async def cleanup_region_text(
         fallback_used = True
         llm_error = str(e)
 
-    region.processed_text = cleaned_text
+    # Only persist processed_text when it actually differs from raw_text.
+    raw_norm = (region.raw_text or "").strip()
+    cleaned_norm = (cleaned_text or "").strip()
+    region.processed_text = cleaned_text if cleaned_norm and cleaned_norm != raw_norm else None
     db.commit()
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
