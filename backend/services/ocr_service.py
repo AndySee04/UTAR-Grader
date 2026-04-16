@@ -102,32 +102,46 @@ class OCRService:
         """
         self._lazy_init()
         
+        # 1. Deskew — straighten tilted scans / phone photos
+        image = cv_service.deskew_image(image)
+
+        # Enhance once at the region level so both:
+        # - line detection (CRAFT/OpenCV)
+        # - TrOCR input
+        # use the same processed pixels.
+        enhanced_image = cv_service.enhance_for_ocr(image)
+
         if not detect_lines:
-            # Process entire image as one line (may lose accuracy)
-            text = self.extract_text_from_line(image)
+            text = self.extract_text_from_line(enhanced_image)
             return text, [{"text": text, "region": None}]
-        
-        # Detect text lines.
-        # Use CRAFT (via EasyOCR) first for handwritten OCR, since line segmentation matters most there.
+
+        # Detect text lines on the enhanced image.
         model_name_lower = (self.model_name or "").lower()
         method = "craft" if "handwritten" in model_name_lower else "opencv"
-        lines = cv_service.detect_text_lines(image, method=method)
-        
+        crop_source = enhanced_image
+        lines = cv_service.detect_text_lines(enhanced_image, method=method)
+
+        # Fallback: if enhancement made segmentation worse, retry line detection
+        # on the deskewed original.
         if not lines:
-            # No lines detected, try processing whole image
-            text = self.extract_text_from_line(image)
+            crop_source = image
+            lines = cv_service.detect_text_lines(image, method=method)
+
+        if not lines:
+            # Final fallback: OCR whole enhanced image.
+            text = self.extract_text_from_line(enhanced_image)
             return text, [{"text": text, "region": None}]
-        
+
         results = []
         full_text_parts = []
-        
+
         for line in lines:
-            # Crop line region
-            line_img = cv_service.crop_region(image, line)
-            
-            # Extract text
+            # Crop each detected line from the chosen source image.
+            line_img = cv_service.crop_region(crop_source, line)
+
+            # TrOCR line-by-line (no per-line enhancement; already enhanced once).
             text = self.extract_text_from_line(line_img)
-            
+
             if text:
                 results.append({
                     "text": text,
@@ -139,7 +153,7 @@ class OCRService:
                     }
                 })
                 full_text_parts.append(text)
-        
+
         full_text = "\n".join(full_text_parts)
         return full_text, results
     
@@ -192,9 +206,9 @@ class OCRService:
         for i in range(0, len(images), batch_size):
             batch = images[i:i + batch_size]
             
-            # Convert to RGB
+            # Preprocess + convert to RGB
             batch_rgb = [
-                img.convert("RGB") if img.mode != "RGB" else img
+                cv_service.enhance_for_ocr(img)
                 for img in batch
             ]
             
@@ -225,10 +239,9 @@ class OCRService:
         Returns:
             Confidence score between 0 and 1
         """
-        # This is a simplified confidence estimation
-        # In practice, you might want to use the model's output logits
         self._lazy_init()
         
+        image = cv_service.enhance_for_ocr(image)
         if image.mode != "RGB":
             image = image.convert("RGB")
         

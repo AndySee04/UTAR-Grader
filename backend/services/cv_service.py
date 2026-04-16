@@ -33,42 +33,42 @@ class CVService:
     def __init__(self):
         pass
     
-    def preprocess_image(self, image: Image.Image) -> np.ndarray:
+    def enhance_for_ocr(self, image: Image.Image) -> Image.Image:
         """
-        Preprocess image for better OCR results.
-        
-        Steps:
-        1. Convert to grayscale
-        2. Apply adaptive thresholding
-        3. Denoise
-        
-        Args:
-            image: PIL Image
-            
-        Returns:
-            Preprocessed numpy array
+        Preprocess a single line crop for better TrOCR accuracy.
+
+        Pipeline:
+        1. Grayscale conversion
+        2. Non-local means denoising (preserves thin pen strokes better than Gaussian blur)
+        3. CLAHE contrast enhancement (handles uneven lighting / faint ink)
+        4. Adaptive thresholding → clean binary image
+        5. Small morphological close to fill broken strokes
+        6. Convert back to RGB PIL Image (TrOCR expects 3-channel input)
         """
-        # Convert PIL to OpenCV format
-        img_array = np.array(image)
-        
-        # Convert to grayscale if needed
-        if len(img_array.shape) == 3:
-            gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        img = np.array(image)
+
+        if len(img.shape) == 3:
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
         else:
-            gray = img_array
-        
-        # Apply adaptive thresholding
+            gray = img
+
+        gray = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
+
         binary = cv2.adaptiveThreshold(
             gray, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
-            11, 2
+            15, 4,
         )
-        
-        # Denoise
-        denoised = cv2.fastNlMeansDenoising(binary, None, 10, 7, 21)
-        
-        return denoised
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+        rgb = cv2.cvtColor(binary, cv2.COLOR_GRAY2RGB)
+        return Image.fromarray(rgb)
     
     def detect_text_regions(
         self,
@@ -179,26 +179,28 @@ class CVService:
     ) -> List[TextRegion]:
         """
         Detect individual text lines for TrOCR processing using OpenCV morphology.
+        Kernel sizes scale with image dimensions to handle varying resolutions.
         """
         img_array = np.array(image)
+        img_h, img_w = img_array.shape[:2]
 
         if len(img_array.shape) == 3:
             gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
         else:
             gray = img_array
 
-        # Binary threshold
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
-        # Horizontal dilation to connect characters in a line
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
+        # Dynamic horizontal kernel: scales with image width so we don't
+        # over-merge lines on high-res scans or under-merge on small crops.
+        kernel_w = max(20, img_w // 30)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_w, 1))
         dilated = cv2.dilate(binary, kernel, iterations=2)
 
-        # Vertical dilation to separate lines
-        kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 3))
+        kernel_v_h = max(1, img_h // 200)
+        kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_v_h))
         dilated = cv2.erode(dilated, kernel_v, iterations=1)
 
-        # Find contours
         contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         lines: List[TextRegion] = []
@@ -209,8 +211,8 @@ class CVService:
                 padding = 5
                 x = max(0, x - padding)
                 y = max(0, y - padding)
-                w = w + 2 * padding
-                h = h + 2 * padding
+                w = min(img_w - x, w + 2 * padding)
+                h = min(img_h - y, h + 2 * padding)
                 lines.append(TextRegion(x=x, y=y, width=w, height=h))
 
         lines.sort(key=lambda r: r.y)
@@ -233,10 +235,11 @@ class CVService:
             return []
 
         if getattr(self, "_easyocr_reader", None) is None:
-            # Load only the detector; recognition is not needed for line boxes.
+            import torch
+            use_gpu = torch.cuda.is_available()
             self._easyocr_reader = easyocr.Reader(
                 ["en"],
-                gpu=False,
+                gpu=use_gpu,
                 detector=True,
                 recognizer=False,
             )
