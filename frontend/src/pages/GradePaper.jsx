@@ -599,11 +599,16 @@ function GradePaper() {
     }
   }, [])
 
-  const handleDrop = useCallback((e, setter, multiple = false) => {
+  const handleDrop = useCallback((e, setter, multiple = false, acceptedExts = ['.pdf']) => {
     e.preventDefault()
     e.stopPropagation()
     setDragActive(null)
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf')
+    const normalizedExts = new Set((acceptedExts || []).map((ext) => ext.toLowerCase()))
+    const files = Array.from(e.dataTransfer.files).filter((f) => {
+      const name = (f?.name || '').toLowerCase()
+      const ext = name.includes('.') ? `.${name.split('.').pop()}` : ''
+      return normalizedExts.has(ext)
+    })
     if (files.length > 0) {
       if (multiple) {
         setter(prev => [...prev, ...files])
@@ -1156,11 +1161,18 @@ function GradePaper() {
             <FileDropZone
               id="student-answers"
               label="Student Answer Sheets"
-              subtitle="Drop multiple PDFs or click to browse"
+              subtitle="Drop multiple PDFs or ZIP files or click to browse"
               file={studentAnswers.length > 0 ? `${studentAnswers.length}` : null}
-              onFileChange={(e) => setStudentAnswers(prev => [...prev, ...Array.from(e.target.files)])}
-              onDrop={(e) => handleDrop(e, setStudentAnswers, true)}
+              onFileChange={(e) => {
+                const files = Array.from(e.target.files || []).filter((file) => {
+                  const name = (file?.name || '').toLowerCase()
+                  return name.endsWith('.pdf') || name.endsWith('.zip')
+                })
+                setStudentAnswers(prev => [...prev, ...files])
+              }}
+              onDrop={(e) => handleDrop(e, setStudentAnswers, true, ['.pdf', '.zip'])}
               zone="students"
+              accept=".pdf,.zip"
               multiple
             />
             {studentAnswers.length > 0 && (
@@ -1285,11 +1297,14 @@ function GradePaper() {
                   <input
                     ref={addStudentInputRef}
                     type="file"
-                    accept=".pdf"
+                    accept=".pdf,.zip"
                     multiple
                     className="hidden"
                     onChange={async (e) => {
-                      const files = Array.from(e.target.files || [])
+                      const files = Array.from(e.target.files || []).filter((file) => {
+                        const name = (file?.name || '').toLowerCase()
+                        return name.endsWith('.pdf') || name.endsWith('.zip')
+                      })
                       e.target.value = ''
                       if (!examId || files.length === 0) return
                       try {

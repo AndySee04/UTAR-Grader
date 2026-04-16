@@ -3,9 +3,12 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
+import io
 import uuid
 import os
 import sys
+import zipfile
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -24,16 +27,53 @@ from config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS
 router = APIRouter()
 
 
-def validate_file(file: UploadFile):
-    """Validate uploaded file type and size."""
-    # Check extension
+def _allowed_extensions_for_doc_type(doc_type: str) -> set:
+    if doc_type == "student_answer":
+        return set(ALLOWED_EXTENSIONS).union({".zip"})
+    return set(ALLOWED_EXTENSIONS)
+
+
+def validate_file(file: UploadFile, doc_type: str):
+    """Validate uploaded file type by document type."""
     ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
+    allowed_extensions = _allowed_extensions_for_doc_type(doc_type)
+    if ext not in allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=f"File type not allowed. Allowed types: {', '.join(sorted(allowed_extensions))}"
         )
     return ext
+
+
+def _safe_zip_member_path(base_dir: Path, member_name: str) -> Optional[Path]:
+    member_path = Path(member_name)
+    if member_path.is_absolute():
+        return None
+    resolved = (base_dir / member_path).resolve()
+    try:
+        resolved.relative_to(base_dir.resolve())
+    except ValueError:
+        return None
+    return resolved
+
+
+def _build_document_record(exam_id: str, doc_type: str, file_path: Path, original_name: Optional[str] = None) -> Document:
+    page_count = None
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(str(file_path))
+        page_count = len(doc)
+        doc.close()
+    except:
+        pass
+
+    return Document(
+        exam_id=exam_id,
+        doc_type=doc_type,
+        file_path=str(file_path),
+        file_name=(original_name or "").strip() or None,
+        page_count=page_count
+    )
 
 
 @router.post("/exams/{exam_id}/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -45,7 +85,7 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Upload a PDF document for an exam."""
+    """Upload a document for an exam."""
     # Validate doc_type
     if doc_type not in ["question_paper", "answer_scheme", "student_answer"]:
         raise HTTPException(
@@ -66,7 +106,12 @@ async def upload_document(
         )
     
     # Validate file
-    ext = validate_file(file)
+    ext = validate_file(file, doc_type)
+    if doc_type == "student_answer" and ext == ".zip":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ZIP upload is only supported in the multiple-upload endpoint for student answers."
+        )
     
     # Create unique filename
     file_id = str(uuid.uuid4())
@@ -95,23 +140,12 @@ async def upload_document(
             detail=f"Failed to save file: {str(e)}"
         )
     
-    # Get page count (will be updated after processing)
-    page_count = None
-    try:
-        import fitz  # PyMuPDF
-        doc = fitz.open(str(file_path))
-        page_count = len(doc)
-        doc.close()
-    except:
-        pass
-    
     # Create document record
-    document = Document(
+    document = _build_document_record(
         exam_id=exam_id,
         doc_type=doc_type,
-        file_path=str(file_path),
-        file_name=(file_name or file.filename or "").strip() or None,
-        page_count=page_count
+        file_path=file_path,
+        original_name=(file_name or file.filename or "")
     )
     
     db.add(document)
@@ -154,41 +188,69 @@ async def upload_multiple_documents(
     
     documents = []
     for file in files:
-        ext = validate_file(file)
+        ext = validate_file(file, doc_type)
         
         # Preserve the original uploaded filename for display/tracking
         file_name = (file.filename or "").strip() or None
-        
-        file_id = str(uuid.uuid4())
-        filename = f"{file_id}{ext}"
-        file_path = UPLOAD_DIR / exam_id / filename
-        
+
         try:
             content = await file.read()
             if len(content) > MAX_FILE_SIZE:
                 continue  # Skip oversized files
-            
+
+            if doc_type == "student_answer" and ext == ".zip":
+                extracted_any = False
+                with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                    for info in zf.infolist():
+                        if info.is_dir():
+                            continue
+
+                        safe_member_path = _safe_zip_member_path(UPLOAD_DIR / exam_id, info.filename)
+                        if safe_member_path is None:
+                            continue
+
+                        member_ext = safe_member_path.suffix.lower()
+                        if member_ext != ".pdf":
+                            continue
+
+                        with zf.open(info) as member_file:
+                            pdf_bytes = member_file.read()
+
+                        if len(pdf_bytes) > MAX_FILE_SIZE:
+                            continue
+
+                        extracted_any = True
+                        file_id = str(uuid.uuid4())
+                        extracted_path = (UPLOAD_DIR / exam_id / f"{file_id}.pdf")
+                        with open(extracted_path, "wb") as out_f:
+                            out_f.write(pdf_bytes)
+
+                        document = _build_document_record(
+                            exam_id=exam_id,
+                            doc_type=doc_type,
+                            file_path=extracted_path,
+                            original_name=os.path.basename(info.filename) or file_name
+                        )
+                        db.add(document)
+                        documents.append(document)
+
+                if not extracted_any:
+                    continue
+                continue
+
+            file_id = str(uuid.uuid4())
+            filename = f"{file_id}{ext}"
+            file_path = UPLOAD_DIR / exam_id / filename
             with open(file_path, "wb") as f:
                 f.write(content)
         except:
             continue
-        
-        # Get page count
-        page_count = None
-        try:
-            import fitz
-            doc = fitz.open(str(file_path))
-            page_count = len(doc)
-            doc.close()
-        except:
-            pass
-        
-        document = Document(
+
+        document = _build_document_record(
             exam_id=exam_id,
             doc_type=doc_type,
-            file_path=str(file_path),
-            file_name=file_name,
-            page_count=page_count
+            file_path=file_path,
+            original_name=file_name
         )
         
         db.add(document)
