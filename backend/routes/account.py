@@ -18,7 +18,7 @@ from utils.auth import get_current_user, get_password_hash, verify_password
 
 router = APIRouter()
 
-_ALLOWED_PROFILE_PICTURE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+_ALLOWED_PROFILE_PICTURE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
 def _picture_cache_version(user: User):
@@ -87,7 +87,7 @@ async def upload_profile_picture(
     """Upload or replace profile picture (stored in database)."""
     ext = Path(file.filename or "").suffix.lower()
     if ext not in _ALLOWED_PROFILE_PICTURE_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only PNG, JPG, JPEG, and WEBP are allowed.")
+        raise HTTPException(status_code=400, detail="Only PNG, JPG, JPEG, WEBP, and GIF are allowed.")
 
     content = await file.read()
     if len(content) > 5 * 1024 * 1024:
