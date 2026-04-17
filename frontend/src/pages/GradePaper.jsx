@@ -10,9 +10,9 @@ const STEPS = [
   { label: 'Grade', icon: 'check' }
 ]
 
-const MIN_CROP_WIDTH_PX = 2000
-const MIN_CROP_HEIGHT_PX = 2000
-const MIN_CROP_AREA_PX = 10000
+const MIN_CROP_WIDTH_PX = 20
+const MIN_CROP_HEIGHT_PX = 20
+const MIN_CROP_AREA_PX = 1000
 
 function StepIcon({ name, className = 'w-5 h-5' }) {
   const baseProps = {
