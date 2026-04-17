@@ -10,6 +10,10 @@ const STEPS = [
   { label: 'Grade', icon: 'check' }
 ]
 
+const MIN_CROP_WIDTH_PX = 20
+const MIN_CROP_HEIGHT_PX = 20
+const MIN_CROP_AREA_PX = 1200
+
 function StepIcon({ name, className = 'w-5 h-5' }) {
   const baseProps = {
     className,
@@ -503,7 +507,8 @@ function GradePaper() {
       const y2 = Math.max(start.y, end.y) * scaleY
       const w = Math.round(x2 - x1)
       const h = Math.round(y2 - y1)
-      if (w < 2 || h < 2) {
+      if (w < MIN_CROP_WIDTH_PX || h < MIN_CROP_HEIGHT_PX || (w * h) < MIN_CROP_AREA_PX) {
+        toast.info('Crop too small, ignored.')
         setCropStart(null)
         setCropEnd(null)
         return
@@ -577,6 +582,10 @@ function GradePaper() {
         })
         .catch((err) => {
           const detail = err?.response?.data?.detail ?? err?.message
+          if (typeof detail === 'string' && detail.toLowerCase().includes('crop region too small')) {
+            toast.info('Crop too small, ignored.')
+            return
+          }
           toast.error(typeof detail === 'string' ? detail : 'Failed to crop or run OCR for this region')
         })
         .finally(() => setProcessingNewCrop(false))

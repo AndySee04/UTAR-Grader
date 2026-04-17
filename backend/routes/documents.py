@@ -41,6 +41,9 @@ router = APIRouter()
 
 CAPTURE_SESSION_TTL_MINUTES = 90
 _capture_sessions: Dict[str, dict] = {}
+MIN_CROP_WIDTH_PX = 20
+MIN_CROP_HEIGHT_PX = 20
+MIN_CROP_AREA_PX = 1200
 
 
 class CaptureSessionCreateRequest(BaseModel):
@@ -1137,6 +1140,18 @@ async def save_crop_region(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
+        )
+
+    crop_w = int(crop_data.width or 0)
+    crop_h = int(crop_data.height or 0)
+    if (
+        crop_w < MIN_CROP_WIDTH_PX
+        or crop_h < MIN_CROP_HEIGHT_PX
+        or (crop_w * crop_h) < MIN_CROP_AREA_PX
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Crop region too small. Ignored."
         )
     
     next_order = db.query(func.coalesce(func.max(ExtractedText.display_order), -1)).filter(

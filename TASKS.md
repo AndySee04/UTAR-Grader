@@ -421,6 +421,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Sync desktop QR auto-refresh with phone "capture another" continuation session
 - [x] Close desktop QR panel when phone user exits student-answer capture chain
 - [x] In Process stage, allow adding student answers via Upload Local and Scan QR actions
+- [x] Ignore tiny crop regions and skip OCR/processing for accidental small drags
 
 ### Next Steps
 
