@@ -343,7 +343,8 @@ function CaptureSession() {
 
         {completed ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-3 text-sm">
-            Capture complete. PDF uploaded successfully. You can return to your desktop.
+            PDF uploaded successfully. <br />
+            You can return to your desktop.
           </div>
         ) : (
           <>
@@ -363,24 +364,43 @@ function CaptureSession() {
                 />
               )}
             </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400">Tap camera preview to focus.</p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={capturePage}
-                disabled={capturing}
-                className="btn-primary flex-1"
-              >
-                {capturing ? 'Capturing...' : replaceIndex == null ? 'Capture Photo' : `Retake #${replaceIndex + 1}`}
-              </button>
-              <button
-                type="button"
-                onClick={handleFinalizeCapture}
-                disabled={pages.length === 0 || finalizing}
-                className="btn-secondary"
-              >
-                {finalizing ? 'Confirming...' : 'Confirm & Upload PDF'}
-              </button>
+            <div className="pt-2">
+              {replaceIndex != null && (
+                <div className="mb-2 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                  <span>Retake mode for page #{replaceIndex + 1}</span>
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setReplaceIndex(null)}
+                  >
+                    Cancel retake
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={capturePage}
+                  disabled={capturing}
+                  className="w-16 h-16 rounded-full border-4 border-indigo-500 bg-white text-indigo-700 flex items-center justify-center shadow-md disabled:opacity-60"
+                  title={replaceIndex == null ? 'Capture photo' : `Retake page ${replaceIndex + 1}`}
+                >
+                  {capturing ? (
+                    <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h4l2-2h6l2 2h4v12H3V7z" />
+                      <circle cx="12" cy="13" r="4" strokeWidth={2} />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <p className="mt-1 text-center text-xs text-gray-500 dark:text-slate-400">
+                {capturing ? 'Capturing...' : replaceIndex == null ? 'Camera capture' : `Retake page #${replaceIndex + 1}`}
+              </p>
             </div>
             {captureStatus && (
               <div className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-2 py-1">
@@ -394,9 +414,6 @@ function CaptureSession() {
       {!completed && pages.length > 0 && (
         <div className="max-w-3xl mx-auto bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 p-4">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Captured Pages</h2>
-          <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">
-            Tiny preview cubes: tap to open full image. Red border means processing fallback.
-          </p>
           <div className="flex gap-2 overflow-x-auto pb-2">
             {pages.map((p, idx) => (
               <button
@@ -412,6 +429,16 @@ function CaptureSession() {
                 <div className="mt-1 text-[11px] text-center text-gray-700 dark:text-slate-300">#{idx + 1}</div>
               </button>
             ))}
+          </div>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleFinalizeCapture}
+              disabled={pages.length === 0 || finalizing}
+              className="btn-secondary w-full"
+            >
+              {finalizing ? 'Confirming...' : 'Confirm & Upload PDF'}
+            </button>
           </div>
         </div>
       )}
@@ -440,7 +467,8 @@ function CaptureSession() {
             />
             {!activePage.processedSuccess && (
               <p className="text-xs text-red-600">
-                Processing fallback detected for this page. You can retake for better detection.
+                Processing fallback detected for this page. <br />
+                You can retake or delete this page.
               </p>
             )}
             <div className="flex gap-2">
