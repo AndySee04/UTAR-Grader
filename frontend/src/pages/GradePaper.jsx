@@ -633,6 +633,16 @@ function GradePaper() {
     return `${protocol}//${window.location.host}`
   }
 
+  const extractCaptureToken = (captureUrl) => {
+    if (!captureUrl) return ''
+    try {
+      const parsed = new URL(captureUrl)
+      return parsed.searchParams.get('token') || ''
+    } catch {
+      return ''
+    }
+  }
+
   const refreshUploadedDocs = async (targetExamId) => {
     const [qList, sList, stList] = await Promise.all([
       documentsAPI.list(targetExamId, 'question_paper'),
@@ -684,13 +694,46 @@ function GradePaper() {
   useEffect(() => {
     if (!captureDialog.open || !captureDialog.sessionId || !examId) return undefined
     const interval = setInterval(async () => {
+      if (captureDialog.loading) return
       try {
         const statusRes = await captureAPI.getSessionOwner(examId, captureDialog.sessionId)
         const status = statusRes?.data?.status
+        const exitRequested = statusRes?.data?.exit_requested === true
+        if (status === 'cancelled') {
+          closeCaptureDialog()
+          toast.success('Phone capture exited')
+          return
+        }
         if (status === 'completed') {
           await refreshUploadedDocs(examId)
           setStudentAnswers([])
           if (captureDialog.docType === 'question_paper') setQuestionPaper(null)
+          if (captureDialog.docType === 'student_answer') {
+            if (exitRequested) {
+              closeCaptureDialog()
+              toast.success('Phone capture exited')
+              return
+            }
+            const token = extractCaptureToken(captureDialog.url)
+            if (token) {
+              setCaptureDialog((prev) => ({ ...prev, loading: true }))
+              const nextRes = await captureAPI.continueSession(captureDialog.sessionId, token)
+              const next = nextRes?.data || {}
+              if (next.session_id && next.mobile_url) {
+                setCaptureDialog((prev) => ({
+                  ...prev,
+                  open: true,
+                  loading: false,
+                  docType: 'student_answer',
+                  url: next.mobile_url,
+                  sessionId: next.session_id,
+                  expiresAt: next.expires_at || null
+                }))
+                toast.success('Student answer uploaded. QR refreshed for next scan.')
+                return
+              }
+            }
+          }
           closeCaptureDialog()
           toast.success('Phone capture uploaded successfully')
         }
@@ -699,7 +742,7 @@ function GradePaper() {
       }
     }, 3000)
     return () => clearInterval(interval)
-  }, [captureDialog.open, captureDialog.sessionId, captureDialog.docType, examId])
+  }, [captureDialog.open, captureDialog.sessionId, captureDialog.docType, captureDialog.url, examId])
 
   // Step 1: Upload
   const handleUpload = async () => {

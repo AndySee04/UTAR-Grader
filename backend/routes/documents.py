@@ -53,6 +53,14 @@ class CaptureSessionFinalizeRequest(BaseModel):
     page_ids: Optional[List[str]] = None
 
 
+class CaptureSessionContinueRequest(BaseModel):
+    token: str
+
+
+class CaptureSessionExitRequest(BaseModel):
+    token: str
+
+
 def _capture_session_dir(exam_id: str, session_id: str) -> Path:
     return UPLOAD_DIR / exam_id / "_capture_sessions" / session_id
 
@@ -83,6 +91,37 @@ def _validate_capture_doc_type(doc_type: str) -> str:
     return value
 
 
+def _create_capture_session_record(exam_id: str, doc_type: str, frontend_base_url: Optional[str] = None) -> dict:
+    session_id = str(uuid.uuid4())
+    token = secrets.token_urlsafe(24)
+    now = datetime.utcnow()
+    expires_at = now + timedelta(minutes=CAPTURE_SESSION_TTL_MINUTES)
+    base_url = (frontend_base_url or FRONTEND_BASE_URL or "").strip().rstrip("/")
+    if not base_url:
+        base_url = FRONTEND_BASE_URL
+    session = {
+        "id": session_id,
+        "token": token,
+        "exam_id": exam_id,
+        "doc_type": doc_type,
+        "status": "pending",
+        "document_id": None,
+        "pages": [],
+        "next_session_id": None,
+        "parent_session_id": None,
+        "exit_requested": False,
+        "created_at": now,
+        "expires_at": expires_at,
+        "frontend_base_url": base_url,
+    }
+    _capture_sessions[session_id] = session
+    return session
+
+
+def _build_capture_mobile_url(session: dict) -> str:
+    return f"{session['frontend_base_url']}/capture/{session['id']}?token={session['token']}"
+
+
 def _session_public_payload(session: dict) -> dict:
     return {
         "session_id": session["id"],
@@ -90,6 +129,7 @@ def _session_public_payload(session: dict) -> dict:
         "doc_type": session["doc_type"],
         "status": session["status"],
         "document_id": session.get("document_id"),
+        "exit_requested": bool(session.get("exit_requested")),
         "page_count": len(session.get("pages") or []),
         "created_at": session["created_at"],
         "expires_at": session["expires_at"],
@@ -628,26 +668,8 @@ async def create_capture_session(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
 
-    session_id = str(uuid.uuid4())
-    token = secrets.token_urlsafe(24)
-    now = datetime.utcnow()
-    expires_at = now + timedelta(minutes=CAPTURE_SESSION_TTL_MINUTES)
-    session = {
-        "id": session_id,
-        "token": token,
-        "exam_id": exam_id,
-        "doc_type": doc_type,
-        "status": "pending",
-        "document_id": None,
-        "pages": [],
-        "created_at": now,
-        "expires_at": expires_at,
-    }
-    _capture_sessions[session_id] = session
-    frontend_base_url = (body.frontend_base_url or FRONTEND_BASE_URL or "").strip().rstrip("/")
-    if not frontend_base_url:
-        frontend_base_url = FRONTEND_BASE_URL
-    mobile_url = f"{frontend_base_url}/capture/{session_id}?token={token}"
+    session = _create_capture_session_record(exam_id, doc_type, body.frontend_base_url)
+    mobile_url = _build_capture_mobile_url(session)
     return {
         **_session_public_payload(session),
         "mobile_url": mobile_url,
@@ -721,6 +743,8 @@ async def upload_capture_session_page(
         raise HTTPException(status_code=403, detail="Invalid capture session token")
     if session.get("status") == "completed":
         raise HTTPException(status_code=409, detail="Session already completed")
+    if session.get("status") == "cancelled":
+        raise HTTPException(status_code=409, detail="Session was closed on desktop/phone.")
 
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
@@ -807,6 +831,8 @@ async def delete_capture_session_page(
         raise HTTPException(status_code=403, detail="Invalid capture session token")
     if session.get("status") == "completed":
         raise HTTPException(status_code=409, detail="Session already completed")
+    if session.get("status") == "cancelled":
+        raise HTTPException(status_code=409, detail="Session was closed on desktop/phone.")
 
     pages = session.get("pages") or []
     remaining = []
@@ -909,6 +935,85 @@ async def finalize_capture_session(
     session["document_id"] = document.id
     _capture_sessions[session_id] = session
     return document
+
+
+@router.post("/capture-sessions/{session_id}/continue")
+async def continue_capture_session(
+    session_id: str,
+    body: CaptureSessionContinueRequest
+):
+    """
+    Create a follow-up student-answer capture session from phone after a successful upload.
+    """
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if body.token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    if session.get("doc_type") != "student_answer":
+        raise HTTPException(status_code=400, detail="Continue capture is only available for student answers.")
+    if session.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Current capture session is not completed yet.")
+    if session.get("exit_requested"):
+        raise HTTPException(status_code=409, detail="Capture continuation was already closed.")
+
+    existing_next_id = session.get("next_session_id")
+    if existing_next_id:
+        existing_next = _capture_sessions.get(existing_next_id)
+        if existing_next and existing_next.get("status") != "completed":
+            return {
+                **_session_public_payload(existing_next),
+                "mobile_url": _build_capture_mobile_url(existing_next),
+            }
+
+    next_session = _create_capture_session_record(
+        exam_id=session["exam_id"],
+        doc_type=session["doc_type"],
+        frontend_base_url=session.get("frontend_base_url"),
+    )
+    next_session["parent_session_id"] = session["id"]
+    _capture_sessions[next_session["id"]] = next_session
+    session["next_session_id"] = next_session["id"]
+    _capture_sessions[session_id] = session
+
+    return {
+        **_session_public_payload(next_session),
+        "mobile_url": _build_capture_mobile_url(next_session),
+    }
+
+
+@router.post("/capture-sessions/{session_id}/exit")
+async def exit_capture_session(
+    session_id: str,
+    body: CaptureSessionExitRequest
+):
+    """
+    Explicitly stop chaining student-answer capture sessions from phone.
+    If a next pending session already exists, cancel it so desktop QR closes.
+    """
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if body.token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    if session.get("doc_type") != "student_answer":
+        raise HTTPException(status_code=400, detail="Exit capture is only available for student answers.")
+    if session.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Current capture session is not completed yet.")
+
+    session["exit_requested"] = True
+    _capture_sessions[session_id] = session
+
+    next_session_id = session.get("next_session_id")
+    if next_session_id:
+        next_session = _capture_sessions.get(next_session_id)
+        if next_session and next_session.get("status") == "pending":
+            next_session["status"] = "cancelled"
+            _capture_sessions[next_session_id] = next_session
+
+    return _session_public_payload(session)
 
 
 @router.get("/exams/{exam_id}/documents", response_model=List[DocumentListResponse])

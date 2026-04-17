@@ -417,6 +417,9 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Detect contour on downscaled image but warp/crop using original-resolution image to reduce blur
 - [x] Force red border status when largest contour is not found (`fallback-no-contour`)
 - [x] Add cancel-retake action and move capture control to centered bottom camera button
+- [x] For student-answer scans, prompt after successful PDF upload to capture another or exit
+- [x] Sync desktop QR auto-refresh with phone "capture another" continuation session
+- [x] Close desktop QR panel when phone user exits student-answer capture chain
 
 ### Next Steps
 

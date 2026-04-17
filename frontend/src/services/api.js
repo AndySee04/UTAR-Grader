@@ -117,6 +117,10 @@ export const captureAPI = {
       token,
       page_ids: pageIds,
     }),
+  continueSession: (sessionId, token) =>
+    api.post(`/capture-sessions/${sessionId}/continue`, {
+      token,
+    }),
 };
 
 // Processing

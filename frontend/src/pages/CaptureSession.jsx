@@ -20,6 +20,9 @@ function CaptureSession() {
   const [finalizing, setFinalizing] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [captureStatus, setCaptureStatus] = useState('')
+  const [showStudentContinuePrompt, setShowStudentContinuePrompt] = useState(false)
+  const [continuing, setContinuing] = useState(false)
+  const [exiting, setExiting] = useState(false)
   const [focusMarker, setFocusMarker] = useState(null)
 
   const pageCountLabel = useMemo(() => `${pages.length} page${pages.length === 1 ? '' : 's'}`, [pages.length])
@@ -304,6 +307,9 @@ function CaptureSession() {
       setCompleted(true)
       setSession((prev) => ({ ...(prev || {}), status: 'completed' }))
       setCaptureStatus('Done. PDF uploaded successfully.')
+      if ((session?.doc_type || '') === 'student_answer') {
+        setShowStudentContinuePrompt(true)
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop())
         streamRef.current = null
@@ -326,6 +332,64 @@ function CaptureSession() {
 
   const activePage = pages.find((p) => p.id === activePageId) || null
   const activePageIndex = activePage ? pages.findIndex((p) => p.id === activePage.id) : -1
+
+  const handleContinueStudentCapture = async () => {
+    if (!sessionId || !token || continuing) return
+    setContinuing(true)
+    setError('')
+    try {
+      const resp = await fetch(`/api/capture-sessions/${sessionId}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+      if (!resp.ok) {
+        let detail = 'Failed to create next capture session'
+        try {
+          const data = await resp.json()
+          detail = data?.detail || detail
+        } catch {
+          // keep default
+        }
+        throw new Error(detail)
+      }
+      const data = await resp.json()
+      const nextUrl = data?.mobile_url
+      if (!nextUrl) throw new Error('Next capture URL missing')
+      window.location.href = nextUrl
+    } catch (e) {
+      setError(e?.message || 'Failed to continue capture')
+      setContinuing(false)
+    }
+  }
+
+  const handleExitStudentCapture = async () => {
+    if (!sessionId || !token || exiting) return
+    setExiting(true)
+    setError('')
+    try {
+      const resp = await fetch(`/api/capture-sessions/${sessionId}/exit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+      if (!resp.ok) {
+        let detail = 'Failed to close capture session'
+        try {
+          const data = await resp.json()
+          detail = data?.detail || detail
+        } catch {
+          // keep default
+        }
+        throw new Error(detail)
+      }
+      setShowStudentContinuePrompt(false)
+    } catch (e) {
+      setError(e?.message || 'Failed to close capture session')
+    } finally {
+      setExiting(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-4 space-y-4">
@@ -510,6 +574,35 @@ function CaptureSession() {
                 disabled={activePageIndex < 0 || activePageIndex >= pages.length - 1}
               >
                 →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {completed && showStudentContinuePrompt && (
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 p-4 space-y-3">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100">PDF uploaded successfully</h3>
+            <p className="text-sm text-gray-600 dark:text-slate-300">
+              Do you want to capture another student answer now?
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleContinueStudentCapture}
+                disabled={continuing || exiting}
+                className="btn-primary flex-1"
+              >
+                {continuing ? 'Opening...' : 'Capture Another'}
+              </button>
+              <button
+                type="button"
+                onClick={handleExitStudentCapture}
+                disabled={continuing || exiting}
+                className="btn-secondary"
+              >
+                {exiting ? 'Exiting...' : 'Exit'}
               </button>
             </div>
           </div>
