@@ -241,25 +241,16 @@ def _crop_foreground_bgr(bgr_img):
     return cropped
 
 
-def _binarize_for_ocr_bgr(bgr_img):
+def _grayscale_for_ocr_bgr(bgr_img):
     """
-    Convert processed page into high-contrast binary image for OCR.
-    Returns 3-channel BGR image (black/white only).
+    Convert processed page into enhanced grayscale for OCR.
+    Returns 3-channel BGR image (gray tones).
     """
     gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (3, 3), 0)
-    adaptive = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        31,
-        11,
-    )
-    # Blend with Otsu to stabilize across uneven lighting.
-    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    binary = cv2.bitwise_and(adaptive, otsu)
-    return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+    denoised = cv2.bilateralFilter(gray, 9, 50, 50)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(denoised)
+    return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
 
 
 def _warp_document_quad_bgr(bgr_img):
@@ -319,7 +310,7 @@ def _server_scan_capture_image(image: Image.Image) -> Tuple[Image.Image, bool, s
         # Require meaningful crop reduction; tiny edge trims should not be "success".
         crop_reduction = 1.0 - (crop_area / src_area)
         processed_success = bool(crop_reduction >= 0.05)
-        ocr_ready = _binarize_for_ocr_bgr(cropped)
+        ocr_ready = _grayscale_for_ocr_bgr(cropped)
         final_rgb = cv2.cvtColor(ocr_ready, cv2.COLOR_BGR2RGB)
         note = "processed-cropped" if processed_success else "fallback-no-crop"
         return Image.fromarray(final_rgb).convert("RGB"), processed_success, note

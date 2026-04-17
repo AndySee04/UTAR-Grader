@@ -20,6 +20,7 @@ function CaptureSession() {
   const [finalizing, setFinalizing] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [captureStatus, setCaptureStatus] = useState('')
+  const [focusMarker, setFocusMarker] = useState(null)
 
   const pageCountLabel = useMemo(() => `${pages.length} page${pages.length === 1 ? '' : 's'}`, [pages.length])
 
@@ -114,6 +115,49 @@ function CaptureSession() {
       }
     }
   }, [loading, completed])
+
+  const handleTapToFocus = async (event) => {
+    const video = videoRef.current
+    const stream = streamRef.current
+    if (!video || !stream) return
+    const track = stream.getVideoTracks()?.[0]
+    if (!track) return
+
+    const rect = video.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    const clientX = event.clientX ?? (event.touches?.[0]?.clientX)
+    const clientY = event.clientY ?? (event.touches?.[0]?.clientY)
+    if (clientX == null || clientY == null) return
+
+    const nx = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const ny = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
+    setFocusMarker({
+      leftPct: nx * 100,
+      topPct: ny * 100,
+    })
+    setTimeout(() => setFocusMarker(null), 900)
+
+    const capabilities = track.getCapabilities?.() || {}
+    const advanced = []
+    if (capabilities.focusMode) {
+      if (capabilities.focusMode.includes('single-shot')) {
+        advanced.push({ focusMode: 'single-shot' })
+      } else if (capabilities.focusMode.includes('continuous')) {
+        advanced.push({ focusMode: 'continuous' })
+      }
+    }
+    if (capabilities.pointsOfInterest) {
+      advanced.push({ pointsOfInterest: [{ x: nx, y: ny }] })
+    }
+    if (!advanced.length) return
+
+    try {
+      await track.applyConstraints({ advanced })
+      setCaptureStatus('Focus adjusted')
+    } catch {
+      // Device/browser may not support focus constraints.
+    }
+  }
 
   const capturePage = async () => {
     if (capturing) return
@@ -303,9 +347,23 @@ function CaptureSession() {
           </div>
         ) : (
           <>
-            <div className="rounded-lg overflow-hidden bg-black">
+            <div
+              className="rounded-lg overflow-hidden bg-black relative"
+              onPointerDown={handleTapToFocus}
+            >
               <video ref={videoRef} className="w-full h-auto max-h-[55vh] object-contain" playsInline muted autoPlay />
+              {focusMarker && (
+                <div
+                  className="absolute w-10 h-10 border-2 border-emerald-400 rounded-full pointer-events-none"
+                  style={{
+                    left: `${focusMarker.leftPct}%`,
+                    top: `${focusMarker.topPct}%`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                />
+              )}
             </div>
+            <p className="text-xs text-gray-500 dark:text-slate-400">Tap camera preview to focus.</p>
             <div className="flex gap-2">
               <button
                 type="button"
