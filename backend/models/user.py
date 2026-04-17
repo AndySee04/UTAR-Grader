@@ -11,11 +11,9 @@ class User(Base):
 
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
+    password = Column(String(255), nullable=False)
     name = Column(String(255))
-    profile_picture_data = Column(LargeBinary, nullable=True)
-    profile_picture_mime_type = Column(String(80), nullable=True)
-    profile_picture_version = Column(String(40), nullable=True)
+    profile_picture = Column(LargeBinary, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     exams = relationship("Exam", back_populates="user", cascade="all, delete-orphan")

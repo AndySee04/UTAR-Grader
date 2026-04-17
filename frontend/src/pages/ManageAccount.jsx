@@ -172,6 +172,7 @@ function ManageAccount() {
       await checkAuth()
       toast.success('Profile picture updated')
       handleCropCancel()
+      window.location.reload()
     } catch (err) {
       toast.error(err.response?.data?.detail || err.message || 'Failed to upload profile picture')
     } finally {

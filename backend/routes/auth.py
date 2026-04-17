@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import timedelta
+import hashlib
 import sys
 import os
 
@@ -35,7 +36,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     hashed_password = get_password_hash(user_data.password)
     new_user = User(
         email=user_data.email,
-        password_hash=hashed_password,
+        password=hashed_password,
         name=user_data.name
     )
     
@@ -58,7 +59,7 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         )
     
     # Verify password
-    if not verify_password(user_data.password, user.password_hash):
+    if not verify_password(user_data.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -74,10 +75,8 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
 
 
 def _picture_cache_version(user: User):
-    if user.profile_picture_version:
-        return user.profile_picture_version
-    if user.profile_picture_data:
-        return str(len(user.profile_picture_data))
+    if user.profile_picture:
+        return hashlib.sha1(user.profile_picture).hexdigest()[:16]
     return None
 
 

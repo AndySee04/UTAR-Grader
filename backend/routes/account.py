@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from pathlib import Path
 from fastapi.responses import Response
+import hashlib
+from PIL import Image
+import io
 
 import sys
 import os
-import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,20 +18,24 @@ from utils.auth import get_current_user, get_password_hash, verify_password
 
 router = APIRouter()
 
-_EXT_MIME = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-}
+_ALLOWED_PROFILE_PICTURE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def _picture_cache_version(user: User):
-    if user.profile_picture_version:
-        return user.profile_picture_version
-    if user.profile_picture_data:
-        return str(len(user.profile_picture_data))
+    if user.profile_picture:
+        return hashlib.sha1(user.profile_picture).hexdigest()[:16]
     return None
+
+
+def _normalize_profile_picture_bytes(content: bytes) -> bytes:
+    """
+    Normalize uploaded avatar to JPEG bytes so schema only needs one blob column.
+    """
+    with Image.open(io.BytesIO(content)) as img:
+        rgb = img.convert("RGB")
+        out = io.BytesIO()
+        rgb.save(out, format="JPEG", quality=88, optimize=True, progressive=True)
+        return out.getvalue()
 
 
 def _user_response_payload(user: User):
@@ -80,22 +86,14 @@ async def upload_profile_picture(
 ):
     """Upload or replace profile picture (stored in database)."""
     ext = Path(file.filename or "").suffix.lower()
-    if ext not in _EXT_MIME:
+    if ext not in _ALLOWED_PROFILE_PICTURE_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Only PNG, JPG, JPEG, and WEBP are allowed.")
 
     content = await file.read()
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Profile picture must be 5MB or smaller.")
 
-    mime = (
-        file.content_type
-        if file.content_type and file.content_type.startswith("image/")
-        else _EXT_MIME[ext]
-    )
-
-    current_user.profile_picture_data = content
-    current_user.profile_picture_mime_type = mime
-    current_user.profile_picture_version = uuid.uuid4().hex[:16]
+    current_user.profile_picture = _normalize_profile_picture_bytes(content)
 
     db.commit()
     db.refresh(current_user)
@@ -108,9 +106,7 @@ async def remove_profile_picture(
     db: Session = Depends(get_db)
 ):
     """Remove current profile picture."""
-    current_user.profile_picture_data = None
-    current_user.profile_picture_mime_type = None
-    current_user.profile_picture_version = None
+    current_user.profile_picture = None
     db.commit()
     db.refresh(current_user)
     return _user_response_payload(current_user)
@@ -125,12 +121,12 @@ async def get_profile_picture(
     if not user:
         raise HTTPException(status_code=404, detail="Profile picture not found.")
 
-    if not user.profile_picture_data:
+    if not user.profile_picture:
         raise HTTPException(status_code=404, detail="Profile picture not found.")
 
     return Response(
-        content=user.profile_picture_data,
-        media_type=user.profile_picture_mime_type or "image/jpeg",
+        content=user.profile_picture,
+        media_type="image/jpeg",
     )
 
 
@@ -142,14 +138,14 @@ async def change_password(
 ):
     """Change account password."""
     # Verify current password
-    if not verify_password(password_data.current_password, current_user.password_hash):
+    if not verify_password(password_data.current_password, current_user.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect"
         )
 
     # Update password
-    current_user.password_hash = get_password_hash(password_data.new_password)
+    current_user.password = get_password_hash(password_data.new_password)
     db.commit()
 
     return {"message": "Password changed successfully"}
