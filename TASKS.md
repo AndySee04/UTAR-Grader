@@ -414,6 +414,8 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Fix gallery status misclassification and add binary black/white page output for OCR
 - [x] Add tap-to-focus on phone camera
 - [x] Switch processed capture output to grayscale for preview and generated PDF
+- [x] Detect contour on downscaled image but warp/crop using original-resolution image to reduce blur
+- [x] Force red border status when largest contour is not found (`fallback-no-contour`)
 
 ### Next Steps
 

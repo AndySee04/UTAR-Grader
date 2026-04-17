@@ -146,6 +146,37 @@ def _biggest_document_quad(contours):
     return biggest
 
 
+def _detect_document_quad_points(bgr_img):
+    """
+    Detect a 4-corner document contour on a downscaled working image,
+    then map points back to the original-resolution image.
+    """
+    h, w = bgr_img.shape[:2]
+    max_side = max(h, w)
+    scale = 1.0
+    work = bgr_img
+    if max_side > 1280:
+        scale = 1280.0 / float(max_side)
+        work = cv2.resize(bgr_img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+    gray = cv2.cvtColor(work, cv2.COLOR_BGR2GRAY)
+    gray = cv2.bilateralFilter(gray, 20, 30, 30)
+    edges = cv2.Canny(gray, 10, 20)
+    contours, _ = cv2.findContours(edges.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    top_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
+    biggest = _biggest_document_quad(top_contours)
+    if biggest.size == 0:
+        return None
+
+    quad = biggest.reshape(4, 2).astype("float32")
+    if scale != 1.0:
+        quad = quad / scale
+    return quad
+
+
 def _deskew_bgr_image(bgr_img):
     """
     Detect dominant document angle and deskew using affine rotation.
@@ -255,29 +286,24 @@ def _grayscale_for_ocr_bgr(bgr_img):
 
 def _warp_document_quad_bgr(bgr_img):
     """
-    Detect 4-corner document contour and perspective-warp it.
-    Uses reference pipeline: bilateral + Canny + biggest 4-point contour.
+    Detect 4-corner document contour, then perspective-warp using ORIGINAL image.
+    This preserves sharpness while keeping contour detection stable.
     """
-    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.bilateralFilter(gray, 20, 30, 30)
-    edges = cv2.Canny(gray, 10, 20)
-    contours, _ = cv2.findContours(edges.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return bgr_img
+    detected_quad = _detect_document_quad_points(bgr_img)
+    if detected_quad is None:
+        return bgr_img, False
 
-    top_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-    biggest = _biggest_document_quad(top_contours)
-    if biggest.size == 0:
-        return bgr_img
-
-    rect = _order_quad_points(biggest.reshape(4, 2))
+    rect = _order_quad_points(detected_quad)
     (tl, tr, br, bl) = rect
     width_a = np.linalg.norm(br - bl)
     width_b = np.linalg.norm(tr - tl)
+    height_a = np.linalg.norm(tr - br)
+    height_b = np.linalg.norm(tl - bl)
     max_width = int(max(width_a, width_b))
-    max_height = int(max_width * 1.414)  # A4 ratio like reference implementation
-    if max_width < 80 or max_height < 120:
-        return bgr_img
+    # Use measured height to avoid stretching/blur from forced A4 ratio.
+    max_height = int(max(height_a, height_b))
+    if max_width < 80 or max_height < 80:
+        return bgr_img, False
 
     dst = np.array([
         [0, 0],
@@ -286,7 +312,8 @@ def _warp_document_quad_bgr(bgr_img):
         [0, max_height - 1],
     ], dtype="float32")
     matrix = cv2.getPerspectiveTransform(rect, dst)
-    return cv2.warpPerspective(bgr_img, matrix, (max_width, max_height))
+    warped = cv2.warpPerspective(bgr_img, matrix, (max_width, max_height))
+    return warped, True
 
 
 def _server_scan_capture_image(image: Image.Image) -> Tuple[Image.Image, bool, str]:
@@ -302,17 +329,21 @@ def _server_scan_capture_image(image: Image.Image) -> Tuple[Image.Image, bool, s
         rgb = np.array(normalized)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         # Reference flow: contour-driven perspective first, then fine deskew + crop.
-        warped = _warp_document_quad_bgr(bgr)
+        warped, contour_found = _warp_document_quad_bgr(bgr)
         deskewed = _deskew_bgr_image(warped)
         cropped = _crop_foreground_bgr(deskewed)
         src_area = float(max(1, bgr.shape[0] * bgr.shape[1]))
         crop_area = float(max(1, cropped.shape[0] * cropped.shape[1]))
         # Require meaningful crop reduction; tiny edge trims should not be "success".
         crop_reduction = 1.0 - (crop_area / src_area)
-        processed_success = bool(crop_reduction >= 0.05)
-        ocr_ready = _grayscale_for_ocr_bgr(cropped)
-        final_rgb = cv2.cvtColor(ocr_ready, cv2.COLOR_BGR2RGB)
-        note = "processed-cropped" if processed_success else "fallback-no-crop"
+        transformed = bool(crop_reduction >= 0.05 or warped.shape[:2] != bgr.shape[:2])
+        # If largest contour is not found, force fallback (red border).
+        processed_success = bool(contour_found and transformed)
+        final_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+        if not contour_found:
+            note = "fallback-no-contour"
+        else:
+            note = "processed-cropped" if processed_success else "fallback-no-crop"
         return Image.fromarray(final_rgb).convert("RGB"), processed_success, note
     except Exception:
         return normalized, False, "processing-error"
