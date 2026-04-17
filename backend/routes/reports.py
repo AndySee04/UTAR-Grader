@@ -19,7 +19,7 @@ from models.document import Document
 from models.grade import Grade
 from utils.auth import get_current_user
 from services.report_service import report_service
-from services.grading_report_bundle import build_excel_bytes, build_all_pdfs_zip_bytes
+from services.grading_report_bundle_service import build_excel_bytes, build_all_pdfs_zip_bytes
 
 router = APIRouter()
 

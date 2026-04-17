@@ -31,7 +31,7 @@ from services.pdf_service import pdf_service
 from services.ocr_service import ocr_service
 from config import smtp_configured
 from services.email_service import send_grading_complete_email
-from services.grading_report_bundle import build_excel_bytes, build_all_pdfs_zip_bytes
+from services.grading_report_bundle_service import build_excel_bytes, build_all_pdfs_zip_bytes
 
 router = APIRouter()
 

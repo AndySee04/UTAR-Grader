@@ -428,6 +428,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Rename `users.profile_picture_data` to `profile_picture` and remove mime column
 - [x] Simplify account route profile-picture extension validation constants
 - [x] Allow GIF uploads for profile picture input
+- [x] Rename grading report bundle service module to `grading_report_bundle_service.py`
 
 ### Next Steps
 

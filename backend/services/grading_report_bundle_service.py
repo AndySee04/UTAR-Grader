@@ -17,6 +17,7 @@ from models.question import Question
 from models.student_answer import StudentAnswer
 from services.report_service import report_service
 
+
 def _display_student_name(raw_name: str | None) -> str:
     n = (raw_name or "").strip()
     if not n:
@@ -103,7 +104,6 @@ def build_all_pdfs_zip_bytes(db: Session, exam: Exam) -> Optional[Tuple[bytes, s
             for g in grades:
                 sa = g.student_answer
                 q = sa.question if sa else None
-                mg = q
                 grade_list.append(
                     {
                         "question_number": q.question_number if q else "",
