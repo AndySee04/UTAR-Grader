@@ -7,6 +7,7 @@ import GradePaper from './pages/GradePaper'
 import ExamList from './pages/ExamList'
 import ExamResults from './pages/ExamResults'
 import ManageAccount from './pages/ManageAccount'
+import CaptureSession from './pages/CaptureSession'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -33,6 +34,7 @@ function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/capture/:sessionId" element={<CaptureSession />} />
       <Route path="/" element={
         <ProtectedRoute>
           <Dashboard />

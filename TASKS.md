@@ -388,7 +388,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 ## Current Progress
 
 **Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
-**Last Updated**: 2026-04-10
+**Last Updated**: 2026-04-17
 
 ### Priority TODOs
 
@@ -399,6 +399,17 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] TrOCR preload on API startup; centralized model loader
 - [x] Dark mode (class strategy, persistence, main surfaces + marking guide contrast)
 - [x] Optional Ollama vision for student OCR refresh (env-driven model; API behavior documented in code/config)
+- [x] Rebuild `captureAPI` methods in frontend service layer
+- [x] Reimplement capture session/page/finalize endpoints in `backend/routes/documents.py`
+- [x] Rebuild `CaptureSession` with jscanify live edge preview + one-row gallery + retake/delete + confirm flow
+- [x] Reconnect `GradePaper` QR launch flow and desktop refresh behavior without auto-jumping to process step
+- [x] Validate capture flow compile/syntax checks (`npm run build`, `python -m compileall backend/routes/documents.py`)
+- [x] Simplify phone capture to photo-first flow (no scan processing on tap; server finalize after confirm)
+- [x] Show phone-captured docs in Upload cards and apply jscanify processing at confirm stage
+- [x] Move capture processing fully to laptop/server finalize (phone capture-only)
+- [x] Improve server image pipeline with auto deskew (minAreaRect) + Otsu contour crop
+- [x] Strengthen server capture scan with Hough-line deskew + quad warp + tighter crop
+- [x] Align server warp step to reference contour code (bilateral + Canny10/20 + biggest quad + A4)
 
 ### Next Steps
 

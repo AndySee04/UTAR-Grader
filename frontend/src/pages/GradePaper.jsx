@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { examsAPI, documentsAPI, processingAPI, markingGuideAPI, gradingAPI } from '../services/api'
+import { examsAPI, documentsAPI, processingAPI, markingGuideAPI, gradingAPI, captureAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 
 const STEPS = [
@@ -116,6 +116,7 @@ function GradePaper() {
   const [regionCleanupMeta, setRegionCleanupMeta] = useState({})
   const [gradingProvider, setGradingProvider] = useState('ollama')
   const [gradingModel, setGradingModel] = useState('')
+  const [captureDialog, setCaptureDialog] = useState({ open: false, loading: false, docType: null, url: '', sessionId: '', expiresAt: null })
 
   const croppedDocs = useMemo(
     () => new Set(Object.entries(regionCountByDocId).filter(([, c]) => c > 0).map(([id]) => id)),
@@ -622,14 +623,94 @@ function GradePaper() {
     setStudentAnswers(prev => prev.filter((_, i) => i !== index))
   }
 
+  const resolveFrontendBaseUrl = () => {
+    if (typeof window === 'undefined') return ''
+    const host = window.location.hostname
+    const protocol = window.location.protocol
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `${protocol}//${host}:5173`
+    }
+    return `${protocol}//${window.location.host}`
+  }
+
+  const refreshUploadedDocs = async (targetExamId) => {
+    const [qList, sList, stList] = await Promise.all([
+      documentsAPI.list(targetExamId, 'question_paper'),
+      documentsAPI.list(targetExamId, 'answer_scheme'),
+      documentsAPI.list(targetExamId, 'student_answer')
+    ])
+    const question = Array.isArray(qList.data) ? qList.data[0] : null
+    const scheme = Array.isArray(sList.data) ? sList.data[0] : null
+    const students = Array.isArray(stList.data) ? stList.data : []
+    setUploadedDocs({ question, scheme, students })
+    return { question, scheme, students }
+  }
+
+  const ensureExamForCapture = async () => {
+    if (examId) return examId
+    if (!examName.trim()) throw new Error('Enter an exam name first')
+    const examRes = await examsAPI.create({ name: examName })
+    const newExamId = examRes.data.id
+    setExamId(newExamId)
+    return newExamId
+  }
+
+  const closeCaptureDialog = () => {
+    setCaptureDialog({ open: false, loading: false, docType: null, url: '', sessionId: '', expiresAt: null })
+  }
+
+  const openCaptureDialog = async (docType) => {
+    setError('')
+    setCaptureDialog({ open: true, loading: true, docType, url: '', sessionId: '', expiresAt: null })
+    try {
+      const targetExamId = await ensureExamForCapture()
+      const frontendBaseUrl = resolveFrontendBaseUrl()
+      const res = await captureAPI.createSession(targetExamId, docType, frontendBaseUrl)
+      const data = res?.data || {}
+      setCaptureDialog({
+        open: true,
+        loading: false,
+        docType,
+        url: data.mobile_url || '',
+        sessionId: data.session_id || '',
+        expiresAt: data.expires_at || null
+      })
+    } catch (err) {
+      closeCaptureDialog()
+      setError(err?.response?.data?.detail || err?.message || 'Failed to start phone capture')
+    }
+  }
+
+  useEffect(() => {
+    if (!captureDialog.open || !captureDialog.sessionId || !examId) return undefined
+    const interval = setInterval(async () => {
+      try {
+        const statusRes = await captureAPI.getSessionOwner(examId, captureDialog.sessionId)
+        const status = statusRes?.data?.status
+        if (status === 'completed') {
+          await refreshUploadedDocs(examId)
+          setStudentAnswers([])
+          if (captureDialog.docType === 'question_paper') setQuestionPaper(null)
+          closeCaptureDialog()
+          toast.success('Phone capture uploaded successfully')
+        }
+      } catch {
+        // Ignore transient polling failures.
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [captureDialog.open, captureDialog.sessionId, captureDialog.docType, examId])
+
   // Step 1: Upload
   const handleUpload = async () => {
     if (!examName.trim()) {
       setError('Please enter an exam name')
       return
     }
+    const hasQuestion = !!uploadedDocs.question || !!questionPaper
+    const hasStudents = (uploadedDocs.students?.length || 0) + studentAnswers.length > 0
     // Answer scheme is optional – only require question paper and at least one student answer
-    if (!questionPaper || studentAnswers.length === 0) {
+    if (!hasQuestion || !hasStudents) {
       setError('Please upload a question paper and at least one student answer sheet')
       return
     }
@@ -638,22 +719,27 @@ function GradePaper() {
     setError('')
 
     try {
-      const examRes = await examsAPI.create({ name: examName })
-      const newExamId = examRes.data.id
-      setExamId(newExamId)
-
-      const qRes = await documentsAPI.upload(newExamId, questionPaper, 'question_paper')
-      let sRes = null
-      if (answerScheme) {
-        sRes = await documentsAPI.upload(newExamId, answerScheme, 'answer_scheme')
+      let targetExamId = examId
+      if (!targetExamId) {
+        const examRes = await examsAPI.create({ name: examName })
+        targetExamId = examRes.data.id
+        setExamId(targetExamId)
       }
-      const stRes = await documentsAPI.uploadMultiple(newExamId, studentAnswers, 'student_answer')
 
-      setUploadedDocs({
-        question: qRes.data,
-        scheme: sRes ? sRes.data : null,
-        students: stRes.data
-      })
+      if (questionPaper) {
+        await documentsAPI.upload(targetExamId, questionPaper, 'question_paper')
+      }
+      if (answerScheme) {
+        await documentsAPI.upload(targetExamId, answerScheme, 'answer_scheme')
+      }
+      if (studentAnswers.length > 0) {
+        await documentsAPI.uploadMultiple(targetExamId, studentAnswers, 'student_answer')
+      }
+
+      await refreshUploadedDocs(targetExamId)
+      setQuestionPaper(null)
+      setAnswerScheme(null)
+      setStudentAnswers([])
 
       toast.success('Documents uploaded successfully!')
       setStep(1)
@@ -1150,11 +1236,21 @@ function GradePaper() {
               id="question-paper"
               label="Question Paper"
               subtitle="Drop PDF or click to browse"
-              file={questionPaper}
+              file={questionPaper || (uploadedDocs.question
+                ? { name: uploadedDocs.question.file_name || 'Captured question paper.pdf' }
+                : null)}
               onFileChange={(e) => setQuestionPaper(e.target.files[0])}
               onDrop={(e) => handleDrop(e, setQuestionPaper)}
               zone="question"
             />
+            <button
+              type="button"
+              onClick={() => openCaptureDialog('question_paper')}
+              className="btn-secondary w-full"
+              disabled={captureDialog.loading}
+            >
+              Scan Question Paper from Phone
+            </button>
           </div>
 
           <div>
@@ -1162,7 +1258,11 @@ function GradePaper() {
               id="student-answers"
               label="Student Answer Sheets"
               subtitle="Drop multiple PDFs or ZIP files or click to browse"
-              file={studentAnswers.length > 0 ? `${studentAnswers.length}` : null}
+              file={
+                studentAnswers.length > 0
+                  ? `${studentAnswers.length}`
+                  : ((uploadedDocs.students?.length || 0) > 0 ? `${uploadedDocs.students.length}` : null)
+              }
               onFileChange={(e) => {
                 const files = Array.from(e.target.files || []).filter((file) => {
                   const name = (file?.name || '').toLowerCase()
@@ -1175,6 +1275,14 @@ function GradePaper() {
               accept=".pdf,.zip"
               multiple
             />
+            <button
+              type="button"
+              onClick={() => openCaptureDialog('student_answer')}
+              className="btn-secondary w-full mt-3"
+              disabled={captureDialog.loading}
+            >
+              Scan Student Answer from Phone
+            </button>
             {studentAnswers.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {studentAnswers.map((file, i) => (
@@ -1193,6 +1301,25 @@ function GradePaper() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+            {(uploadedDocs.students?.length || 0) > 0 && studentAnswers.length === 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {uploadedDocs.students.slice(0, 8).map((doc) => (
+                  <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-slate-800/80 rounded-lg text-sm border border-transparent dark:border-slate-700">
+                    <svg className="w-4 h-4 text-gray-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-gray-600 dark:text-slate-300 truncate max-w-[170px]">
+                      {doc.file_name || 'Captured student PDF'}
+                    </span>
+                  </div>
+                ))}
+                {uploadedDocs.students.length > 8 && (
+                  <div className="flex items-center px-3 py-1.5 rounded-lg text-xs text-gray-500 bg-gray-50 dark:bg-slate-800/80 border border-transparent dark:border-slate-700">
+                    +{uploadedDocs.students.length - 8} more
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2240,6 +2367,57 @@ function GradePaper() {
                 Save & Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {captureDialog.open && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100">Scan with your phone</h3>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  {captureDialog.docType === 'question_paper' ? 'Question Paper' : 'Student Answer'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCaptureDialog}
+                className="text-gray-400 hover:text-gray-700 dark:hover:text-slate-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            {captureDialog.loading ? (
+              <div className="text-sm text-gray-500 dark:text-slate-400">Preparing capture session...</div>
+            ) : (
+              <>
+                {captureDialog.url ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(captureDialog.url)}`}
+                      alt="Capture session QR code"
+                      className="w-56 h-56 rounded-lg border border-gray-200 dark:border-slate-700"
+                    />
+                    <a
+                      href={captureDialog.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-indigo-600 hover:underline break-all text-center"
+                    >
+                      {captureDialog.url}
+                    </a>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 text-center">
+                      Keep this dialog open. It auto-refreshes when phone upload is done.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-sm text-red-600">Failed to create capture link.</div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

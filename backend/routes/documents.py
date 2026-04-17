@@ -1,14 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Body, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
+from typing import List, Optional, Dict
 import io
 import uuid
 import os
 import sys
 import zipfile
+import shutil
 from pathlib import Path
+import secrets
+from datetime import datetime, timedelta
+from pydantic import BaseModel
+from PIL import Image, ImageOps
+try:
+    import cv2
+except Exception:
+    cv2 = None
+try:
+    import numpy as np
+except Exception:
+    np = None
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -22,9 +35,291 @@ from models.grade import Grade
 from models.llm_response import LLMResponse
 from schemas.document import DocumentResponse, DocumentListResponse, CropRegion, CropRegionResponse
 from utils.auth import get_current_user
-from config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS
+from config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS, FRONTEND_BASE_URL
 
 router = APIRouter()
+
+CAPTURE_SESSION_TTL_MINUTES = 90
+_capture_sessions: Dict[str, dict] = {}
+
+
+class CaptureSessionCreateRequest(BaseModel):
+    doc_type: str
+    frontend_base_url: Optional[str] = None
+
+
+class CaptureSessionFinalizeRequest(BaseModel):
+    token: str
+    page_ids: Optional[List[str]] = None
+
+
+def _capture_session_dir(exam_id: str, session_id: str) -> Path:
+    return UPLOAD_DIR / exam_id / "_capture_sessions" / session_id
+
+
+def _cleanup_expired_capture_sessions() -> None:
+    now = datetime.utcnow()
+    expired = [
+        sid for sid, s in _capture_sessions.items()
+        if isinstance(s.get("expires_at"), datetime) and s["expires_at"] < now
+    ]
+    for sid in expired:
+        session = _capture_sessions.get(sid) or {}
+        exam_id = session.get("exam_id")
+        if exam_id:
+            session_dir = _capture_session_dir(exam_id, sid)
+            if session_dir.exists():
+                shutil.rmtree(session_dir, ignore_errors=True)
+        _capture_sessions.pop(sid, None)
+
+
+def _validate_capture_doc_type(doc_type: str) -> str:
+    value = (doc_type or "").strip()
+    if value not in {"question_paper", "student_answer"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Capture sessions only support question_paper and student_answer."
+        )
+    return value
+
+
+def _session_public_payload(session: dict) -> dict:
+    return {
+        "session_id": session["id"],
+        "exam_id": session["exam_id"],
+        "doc_type": session["doc_type"],
+        "status": session["status"],
+        "document_id": session.get("document_id"),
+        "page_count": len(session.get("pages") or []),
+        "created_at": session["created_at"],
+        "expires_at": session["expires_at"],
+    }
+
+
+def _capture_page_payload(session: dict, page: dict) -> dict:
+    return {
+        "id": page["id"],
+        "index": page["index"],
+        "width": page["width"],
+        "height": page["height"],
+        "created_at": page["created_at"],
+        "preview_url": (
+            f"/api/capture-sessions/{session['id']}/pages/{page['id']}/image"
+            f"?token={session['token']}"
+        ),
+    }
+
+
+def _normalize_capture_image(image: Image.Image) -> Image.Image:
+    return ImageOps.exif_transpose(image).convert("RGB")
+
+
+def _order_quad_points(points):
+    """Order 4 points as top-left, top-right, bottom-right, bottom-left."""
+    pts = points.astype("float32")
+    s = pts.sum(axis=1)
+    diff = np.diff(pts, axis=1)
+    tl = pts[np.argmin(s)]
+    br = pts[np.argmax(s)]
+    tr = pts[np.argmin(diff)]
+    bl = pts[np.argmax(diff)]
+    return np.array([tl, tr, br, bl], dtype="float32")
+
+
+def _biggest_document_quad(contours):
+    """
+    Reference-style biggest 4-corner contour selection.
+    Mirrors user's OpenCV approach.
+    """
+    biggest = np.array([])
+    max_area = 0
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 1000:
+            peri = cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, 0.015 * peri, True)
+            if area > max_area and len(approx) == 4:
+                biggest = approx
+                max_area = area
+    return biggest
+
+
+def _deskew_bgr_image(bgr_img):
+    """
+    Detect dominant document angle and deskew using affine rotation.
+    Uses edges + largest contour -> minAreaRect angle.
+    """
+    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blur, 60, 160)
+
+    # Prefer Hough dominant line angle for deskew.
+    angle_candidates = []
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180.0,
+        threshold=100,
+        minLineLength=max(80, int(min(bgr_img.shape[:2]) * 0.15)),
+        maxLineGap=20,
+    )
+    if lines is not None:
+        for ln in lines[:200]:
+            x1, y1, x2, y2 = ln[0]
+            dx = x2 - x1
+            dy = y2 - y1
+            if abs(dx) < 5:
+                continue
+            angle = np.degrees(np.arctan2(dy, dx))
+            # Keep mostly-horizontal lines; verticals are less stable for deskew.
+            if -45.0 <= angle <= 45.0:
+                angle_candidates.append(angle)
+
+    if angle_candidates:
+        angle = float(np.median(angle_candidates))
+    else:
+        # Fallback to minAreaRect angle from largest contour.
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return bgr_img
+        largest = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(largest) < max(4000, int(bgr_img.shape[0] * bgr_img.shape[1] * 0.03)):
+            return bgr_img
+        rect = cv2.minAreaRect(largest)
+        angle = rect[-1]
+        if angle < -45:
+            angle = 90 + angle
+
+    h, w = bgr_img.shape[:2]
+    center = (w / 2.0, h / 2.0)
+    matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+    return cv2.warpAffine(
+        bgr_img,
+        matrix,
+        (w, h),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE
+    )
+
+
+def _crop_foreground_bgr(bgr_img):
+    """
+    Create mask with Otsu threshold and crop to largest foreground contour.
+    """
+    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, mask = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Ensure document is white in mask; invert when needed.
+    white_ratio = float(np.count_nonzero(mask)) / float(mask.size)
+    if white_ratio < 0.25:
+        mask = cv2.bitwise_not(mask)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return bgr_img
+
+    largest = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(largest)
+    if area < max(4000, int(bgr_img.shape[0] * bgr_img.shape[1] * 0.03)):
+        return bgr_img
+
+    x, y, w, h = cv2.boundingRect(largest)
+    pad = max(4, int(min(w, h) * 0.01))
+    x0 = max(0, x - pad)
+    y0 = max(0, y - pad)
+    x1 = min(bgr_img.shape[1], x + w + pad)
+    y1 = min(bgr_img.shape[0], y + h + pad)
+    cropped = bgr_img[y0:y1, x0:x1]
+    if cropped.size == 0:
+        return bgr_img
+    return cropped
+
+
+def _warp_document_quad_bgr(bgr_img):
+    """
+    Detect 4-corner document contour and perspective-warp it.
+    Uses reference pipeline: bilateral + Canny + biggest 4-point contour.
+    """
+    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.bilateralFilter(gray, 20, 30, 30)
+    edges = cv2.Canny(gray, 10, 20)
+    contours, _ = cv2.findContours(edges.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return bgr_img
+
+    top_contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
+    biggest = _biggest_document_quad(top_contours)
+    if biggest.size == 0:
+        return bgr_img
+
+    rect = _order_quad_points(biggest.reshape(4, 2))
+    (tl, tr, br, bl) = rect
+    width_a = np.linalg.norm(br - bl)
+    width_b = np.linalg.norm(tr - tl)
+    max_width = int(max(width_a, width_b))
+    max_height = int(max_width * 1.414)  # A4 ratio like reference implementation
+    if max_width < 80 or max_height < 120:
+        return bgr_img
+
+    dst = np.array([
+        [0, 0],
+        [max_width - 1, 0],
+        [max_width - 1, max_height - 1],
+        [0, max_height - 1],
+    ], dtype="float32")
+    matrix = cv2.getPerspectiveTransform(rect, dst)
+    return cv2.warpPerspective(bgr_img, matrix, (max_width, max_height))
+
+
+def _server_scan_capture_image(image: Image.Image) -> Image.Image:
+    """
+    Server-side document detection/straighten+crop on laptop.
+    Falls back to normalized original when detection fails.
+    """
+    normalized = _normalize_capture_image(image)
+    if cv2 is None or np is None:
+        return normalized
+
+    try:
+        rgb = np.array(normalized)
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        # Reference flow: contour-driven perspective first, then fine deskew + crop.
+        warped = _warp_document_quad_bgr(bgr)
+        deskewed = _deskew_bgr_image(warped)
+        cropped = _crop_foreground_bgr(deskewed)
+        final_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(final_rgb).convert("RGB")
+    except Exception:
+        return normalized
+
+
+def _save_document_bytes(
+    *,
+    exam_id: str,
+    doc_type: str,
+    content: bytes,
+    source_filename: Optional[str],
+    display_name: Optional[str]
+) -> Document:
+    ext = os.path.splitext(source_filename or "")[1].lower() or ".pdf"
+    if ext not in ALLOWED_EXTENSIONS:
+        ext = ".pdf"
+    file_id = str(uuid.uuid4())
+    filename = f"{file_id}{ext}"
+    file_path = UPLOAD_DIR / exam_id / filename
+    (UPLOAD_DIR / exam_id).mkdir(parents=True, exist_ok=True)
+    with open(file_path, "wb") as f:
+        f.write(content)
+    return _build_document_record(
+        exam_id=exam_id,
+        doc_type=doc_type,
+        file_path=file_path,
+        original_name=(display_name or source_filename or "")
+    )
 
 
 def _allowed_extensions_for_doc_type(doc_type: str) -> set:
@@ -261,6 +556,298 @@ async def upload_multiple_documents(
         db.refresh(doc)
     
     return documents
+
+
+@router.post("/exams/{exam_id}/capture-sessions", status_code=status.HTTP_201_CREATED)
+async def create_capture_session(
+    exam_id: str,
+    body: CaptureSessionCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a QR/mobile capture session for one document upload."""
+    _cleanup_expired_capture_sessions()
+    doc_type = _validate_capture_doc_type(body.doc_type)
+
+    exam = db.query(Exam).filter(
+        Exam.id == exam_id,
+        Exam.user_id == current_user.id
+    ).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    session_id = str(uuid.uuid4())
+    token = secrets.token_urlsafe(24)
+    now = datetime.utcnow()
+    expires_at = now + timedelta(minutes=CAPTURE_SESSION_TTL_MINUTES)
+    session = {
+        "id": session_id,
+        "token": token,
+        "exam_id": exam_id,
+        "doc_type": doc_type,
+        "status": "pending",
+        "document_id": None,
+        "pages": [],
+        "created_at": now,
+        "expires_at": expires_at,
+    }
+    _capture_sessions[session_id] = session
+    frontend_base_url = (body.frontend_base_url or FRONTEND_BASE_URL or "").strip().rstrip("/")
+    if not frontend_base_url:
+        frontend_base_url = FRONTEND_BASE_URL
+    mobile_url = f"{frontend_base_url}/capture/{session_id}?token={token}"
+    return {
+        **_session_public_payload(session),
+        "mobile_url": mobile_url,
+    }
+
+
+@router.get("/exams/{exam_id}/capture-sessions/{session_id}")
+async def get_capture_session_owner(
+    exam_id: str,
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get capture session status for desktop owner polling."""
+    _cleanup_expired_capture_sessions()
+    exam = db.query(Exam).filter(
+        Exam.id == exam_id,
+        Exam.user_id == current_user.id
+    ).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    session = _capture_sessions.get(session_id)
+    if not session or session.get("exam_id") != exam_id:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    return _session_public_payload(session)
+
+
+@router.get("/capture-sessions/{session_id}")
+async def get_capture_session_public(
+    session_id: str,
+    token: str = Query(...)
+):
+    """Get capture session status for phone client."""
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    return _session_public_payload(session)
+
+
+@router.get("/capture-sessions/{session_id}/pages")
+async def list_capture_session_pages(
+    session_id: str,
+    token: str = Query(...)
+):
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    return {
+        **_session_public_payload(session),
+        "pages": [_capture_page_payload(session, p) for p in (session.get("pages") or [])],
+    }
+
+
+@router.post("/capture-sessions/{session_id}/pages", status_code=status.HTTP_201_CREATED)
+async def upload_capture_session_page(
+    session_id: str,
+    token: str = Form(...),
+    file: UploadFile = File(...)
+):
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    if session.get("status") == "completed":
+        raise HTTPException(status_code=409, detail="Session already completed")
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise HTTPException(status_code=400, detail="Captured page must be an image file.")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024*1024)}MB"
+        )
+
+    try:
+        pil_img = Image.open(io.BytesIO(content))
+        processed = _normalize_capture_image(pil_img)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image upload.")
+
+    pages = session.get("pages") or []
+    page_id = str(uuid.uuid4())
+    page_index = len(pages) + 1
+    page_dir = _capture_session_dir(session["exam_id"], session_id)
+    page_dir.mkdir(parents=True, exist_ok=True)
+    source_path = page_dir / f"{page_index:03d}_{page_id}_source.png"
+    preview_path = page_dir / f"{page_index:03d}_{page_id}_preview.jpg"
+    processed.save(source_path, format="PNG", optimize=True)
+    processed.save(preview_path, format="JPEG", quality=78, optimize=True, progressive=True)
+
+    page = {
+        "id": page_id,
+        "index": page_index,
+        "source_path": str(source_path),
+        "preview_path": str(preview_path),
+        "width": processed.width,
+        "height": processed.height,
+        "created_at": datetime.utcnow(),
+    }
+    pages.append(page)
+    session["pages"] = pages
+    _capture_sessions[session_id] = session
+    return _capture_page_payload(session, page)
+
+
+@router.get("/capture-sessions/{session_id}/pages/{page_id}/image")
+async def get_capture_session_page_image(
+    session_id: str,
+    page_id: str,
+    token: str = Query(...)
+):
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    page = next((p for p in (session.get("pages") or []) if p.get("id") == page_id), None)
+    if not page:
+        raise HTTPException(status_code=404, detail="Capture page not found")
+    path = Path(page.get("preview_path") or "")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Capture page image missing")
+    return FileResponse(str(path), media_type="image/jpeg")
+
+
+@router.delete("/capture-sessions/{session_id}/pages/{page_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_capture_session_page(
+    session_id: str,
+    page_id: str,
+    token: str = Query(...)
+):
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    if session.get("status") == "completed":
+        raise HTTPException(status_code=409, detail="Session already completed")
+
+    pages = session.get("pages") or []
+    remaining = []
+    target = None
+    for p in pages:
+        if p.get("id") == page_id and target is None:
+            target = p
+        else:
+            remaining.append(p)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Capture page not found")
+
+    target_source = Path(target.get("source_path") or "")
+    target_preview = Path(target.get("preview_path") or "")
+    if target_source.exists():
+        target_source.unlink(missing_ok=True)
+    if target_preview.exists():
+        target_preview.unlink(missing_ok=True)
+
+    for idx, p in enumerate(remaining, 1):
+        p["index"] = idx
+    session["pages"] = remaining
+    _capture_sessions[session_id] = session
+    return None
+
+
+@router.post("/capture-sessions/{session_id}/finalize", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+async def finalize_capture_session(
+    session_id: str,
+    body: CaptureSessionFinalizeRequest,
+    db: Session = Depends(get_db)
+):
+    _cleanup_expired_capture_sessions()
+    session = _capture_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Capture session not found")
+    if body.token != session.get("token"):
+        raise HTTPException(status_code=403, detail="Invalid capture session token")
+    if session.get("status") == "completed":
+        existing_doc_id = session.get("document_id")
+        if existing_doc_id:
+            existing_doc = db.query(Document).filter(Document.id == existing_doc_id).first()
+            if existing_doc:
+                return existing_doc
+        raise HTTPException(status_code=409, detail="Session already completed")
+
+    pages = session.get("pages") or []
+    if not pages:
+        raise HTTPException(status_code=400, detail="No captured pages to finalize.")
+
+    if body.page_ids:
+        page_map = {p.get("id"): p for p in pages}
+        ordered = []
+        seen = set()
+        for pid in body.page_ids:
+            if pid in seen:
+                continue
+            page = page_map.get(pid)
+            if not page:
+                raise HTTPException(status_code=400, detail="Invalid page order payload.")
+            ordered.append(page)
+            seen.add(pid)
+        if len(ordered) != len(pages):
+            raise HTTPException(status_code=400, detail="All captured pages must be included.")
+        pages = ordered
+    else:
+        pages = sorted(pages, key=lambda p: p.get("index", 0))
+
+    pil_pages = []
+    for p in pages:
+        page_path = Path(p.get("source_path") or "")
+        if not page_path.exists():
+            raise HTTPException(status_code=400, detail="One or more capture pages are missing.")
+        with Image.open(page_path) as img:
+            pil_pages.append(_server_scan_capture_image(img))
+
+    pdf_buffer = io.BytesIO()
+    first, rest = pil_pages[0], pil_pages[1:]
+    first.save(pdf_buffer, format="PDF", save_all=True, append_images=rest)
+    content = pdf_buffer.getvalue()
+    if not content:
+        raise HTTPException(status_code=500, detail="Failed to generate PDF from captured pages.")
+
+    file_name = f"{session['doc_type']}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    document = _save_document_bytes(
+        exam_id=session["exam_id"],
+        doc_type=session["doc_type"],
+        content=content,
+        source_filename=file_name,
+        display_name=file_name,
+    )
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    session["status"] = "completed"
+    session["document_id"] = document.id
+    _capture_sessions[session_id] = session
+    return document
 
 
 @router.get("/exams/{exam_id}/documents", response_model=List[DocumentListResponse])

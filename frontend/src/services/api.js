@@ -89,6 +89,36 @@ export const documentsAPI = {
   delete: (id) => api.delete(`/${id}`),
 };
 
+// Phone Capture Sessions
+export const captureAPI = {
+  createSession: (examId, docType, frontendBaseUrl) =>
+    api.post(`/exams/${examId}/capture-sessions`, {
+      doc_type: docType,
+      frontend_base_url: frontendBaseUrl,
+    }),
+  getSessionOwner: (examId, sessionId) =>
+    api.get(`/exams/${examId}/capture-sessions/${sessionId}`),
+  getSessionPublic: (sessionId, token) =>
+    api.get(`/capture-sessions/${sessionId}`, { params: { token } }),
+  listPages: (sessionId, token) =>
+    api.get(`/capture-sessions/${sessionId}/pages`, { params: { token } }),
+  uploadPage: (sessionId, token, file) => {
+    const formData = new FormData();
+    formData.append("token", token);
+    formData.append("file", file);
+    return api.post(`/capture-sessions/${sessionId}/pages`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  deletePage: (sessionId, pageId, token) =>
+    api.delete(`/capture-sessions/${sessionId}/pages/${pageId}`, { params: { token } }),
+  finalizeSession: (sessionId, token, pageIds = []) =>
+    api.post(`/capture-sessions/${sessionId}/finalize`, {
+      token,
+      page_ids: pageIds,
+    }),
+};
+
 // Processing
 export const processingAPI = {
   runOCR: (regionId) => api.post(`/regions/${regionId}/ocr`),

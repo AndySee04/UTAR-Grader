@@ -1,0 +1,355 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
+
+const CAPTURE_JPEG_QUALITY = 0.9
+const MAX_CAPTURE_SIDE = 1600
+
+function CaptureSession() {
+  const { sessionId } = useParams()
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token') || ''
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
+  const [session, setSession] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [capturing, setCapturing] = useState(false)
+  const [pages, setPages] = useState([])
+  const [replaceIndex, setReplaceIndex] = useState(null)
+  const [finalizing, setFinalizing] = useState(false)
+  const [completed, setCompleted] = useState(false)
+  const [captureStatus, setCaptureStatus] = useState('')
+
+  const pageCountLabel = useMemo(() => `${pages.length} page${pages.length === 1 ? '' : 's'}`, [pages.length])
+
+  useEffect(() => {
+    let mounted = true
+    if (!sessionId || !token) {
+      setError('Invalid capture link. Missing session token.')
+      setLoading(false)
+      return
+    }
+    const loadSession = async () => {
+      try {
+        const sessionRes = await fetch(`/api/capture-sessions/${sessionId}?token=${encodeURIComponent(token)}`)
+        if (!sessionRes.ok) {
+          let detail = 'Failed to load capture session'
+          try {
+            const data = await sessionRes.json()
+            detail = data?.detail || detail
+          } catch {
+            // Keep fallback detail.
+          }
+          throw new Error(detail)
+        }
+        const sessionData = await sessionRes.json()
+        if (!mounted) return
+        setSession(sessionData)
+        if (sessionData?.status === 'completed') setCompleted(true)
+
+        const pagesRes = await fetch(`/api/capture-sessions/${sessionId}/pages?token=${encodeURIComponent(token)}`)
+        if (!pagesRes.ok) {
+          setPages([])
+          return
+        }
+        const pagesData = await pagesRes.json()
+        if (!mounted) return
+        const serverPages = Array.isArray(pagesData?.pages) ? pagesData.pages : []
+        setPages(serverPages.map((p) => ({
+          id: p.id,
+          previewUrl: p.preview_url,
+          width: p.width,
+          height: p.height
+        })))
+      } catch (err) {
+        if (!mounted) return
+        setError(err?.message || 'Failed to load capture session')
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    loadSession()
+    return () => { mounted = false }
+  }, [sessionId, token])
+
+  useEffect(() => {
+    let mounted = true
+    if (loading || completed) return undefined
+    const start = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: false
+        })
+        if (!mounted) return
+        streamRef.current = stream
+        const video = videoRef.current
+        if (video) {
+          video.srcObject = stream
+          try {
+            await video.play()
+          } catch {
+            // Some mobile browsers block autoplay promises; tap still starts capture.
+          }
+        }
+      } catch (e) {
+        if (!mounted) return
+        setError(e?.message || 'Camera access denied.')
+      }
+    }
+
+    start()
+    return () => {
+      mounted = false
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+      }
+    }
+  }, [loading, completed])
+
+  const capturePage = async () => {
+    if (capturing) return
+    const video = videoRef.current
+    if (!video) {
+      setError('Camera is not initialized yet.')
+      return
+    }
+    if ((video.videoWidth || 0) < 2 || (video.videoHeight || 0) < 2) {
+      setError('Camera is still starting. Please try again in a moment.')
+      return
+    }
+    setCapturing(true)
+    setCaptureStatus('Capturing photo...')
+    setError('')
+    try {
+      const canvas = document.createElement('canvas')
+      const srcW = video.videoWidth || 1280
+      const srcH = video.videoHeight || 720
+      const maxSide = Math.max(srcW, srcH)
+      const scale = maxSide > MAX_CAPTURE_SIDE ? MAX_CAPTURE_SIDE / maxSide : 1
+      canvas.width = Math.max(1, Math.round(srcW * scale))
+      canvas.height = Math.max(1, Math.round(srcH * scale))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('Could not create canvas context')
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((result) => {
+          if (result) resolve(result)
+          else reject(new Error('Failed to capture image frame'))
+        }, 'image/jpeg', CAPTURE_JPEG_QUALITY)
+      })
+      if (!blob || blob.size <= 0) {
+        throw new Error('Captured image blob is empty')
+      }
+      setCaptureStatus('Uploading page...')
+      const formData = new FormData()
+      formData.append('token', token)
+      formData.append('file', blob, `capture_${Date.now()}.jpg`)
+      const uploadResp = await fetch(`/api/capture-sessions/${sessionId}/pages`, {
+        method: 'POST',
+        body: formData
+      })
+      if (!uploadResp.ok) {
+        let detail = 'Failed to upload captured page'
+        try {
+          const data = await uploadResp.json()
+          detail = data?.detail || detail
+        } catch {
+          // Keep fallback detail.
+        }
+        throw new Error(detail)
+      }
+      const uploaded = await uploadResp.json()
+      const next = {
+        id: uploaded?.id || crypto.randomUUID(),
+        previewUrl: uploaded?.preview_url || '',
+        width: uploaded?.width,
+        height: uploaded?.height
+      }
+      if (replaceIndex != null && pages[replaceIndex]?.id) {
+        await fetch(
+          `/api/capture-sessions/${sessionId}/pages/${pages[replaceIndex].id}?token=${encodeURIComponent(token)}`,
+          { method: 'DELETE' }
+        )
+      }
+      setPages((prev) => {
+        if (replaceIndex == null) return [...prev, next]
+        return prev.map((p, idx) => (idx === replaceIndex ? next : p))
+      })
+      setReplaceIndex(null)
+      setCaptureStatus('Page captured successfully.')
+    } catch (e) {
+      setCaptureStatus('')
+      setError(e?.response?.data?.detail || e?.message || 'Failed to capture page')
+    } finally {
+      setCapturing(false)
+    }
+  }
+
+  const movePage = (index, direction) => {
+    setPages((prev) => {
+      const target = index + direction
+      if (target < 0 || target >= prev.length) return prev
+      const copy = [...prev]
+      const [item] = copy.splice(index, 1)
+      copy.splice(target, 0, item)
+      return copy
+    })
+  }
+
+  const handleFinalizeCapture = async () => {
+    if (!sessionId || !token || pages.length === 0 || finalizing) return
+    setFinalizing(true)
+    setCaptureStatus('Processing photos on laptop/server...')
+    setError('')
+    try {
+      setCaptureStatus('Generating final PDF on server...')
+      const finalizeResp = await fetch(`/api/capture-sessions/${sessionId}/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          page_ids: pages.map((p) => p.id)
+        })
+      })
+      if (!finalizeResp.ok) {
+        let detail = 'Failed to finalize capture'
+        try {
+          const data = await finalizeResp.json()
+          detail = data?.detail || detail
+        } catch {
+          // Keep fallback detail.
+        }
+        throw new Error(detail)
+      }
+      setCompleted(true)
+      setSession((prev) => ({ ...(prev || {}), status: 'completed' }))
+      setCaptureStatus('Done. PDF uploaded successfully.')
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+      }
+    } catch (e) {
+      setCaptureStatus('')
+      setError(e?.response?.data?.detail || e?.message || 'Failed to finalize capture')
+    } finally {
+      setFinalizing(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-4 flex items-center justify-center text-gray-600 dark:text-slate-300">
+        Loading capture session...
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-4 space-y-4">
+      <div className="max-w-3xl mx-auto bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 p-4 space-y-4">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Phone Document Capture</h1>
+          <p className="text-sm text-gray-500 dark:text-slate-400">
+            {session?.doc_type === 'question_paper' ? 'Question Paper' : 'Student Answer'} • {pageCountLabel}
+          </p>
+        </div>
+
+        {error && (
+          <div className="text-sm rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2">{error}</div>
+        )}
+
+        {completed ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 px-3 py-3 text-sm">
+            Capture complete. PDF uploaded successfully. You can return to your desktop.
+          </div>
+        ) : (
+          <>
+            <div className="rounded-lg overflow-hidden bg-black">
+              <video ref={videoRef} className="w-full h-auto max-h-[55vh] object-contain" playsInline muted autoPlay />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={capturePage}
+                disabled={capturing}
+                className="btn-primary flex-1"
+              >
+                {capturing ? 'Capturing...' : replaceIndex == null ? 'Capture Photo' : `Retake #${replaceIndex + 1}`}
+              </button>
+              <button
+                type="button"
+                onClick={handleFinalizeCapture}
+                disabled={pages.length === 0 || finalizing}
+                className="btn-secondary"
+              >
+                {finalizing ? 'Confirming...' : 'Confirm & Upload PDF'}
+              </button>
+            </div>
+            {captureStatus && (
+              <div className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-2 py-1">
+                {captureStatus}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {!completed && pages.length > 0 && (
+        <div className="max-w-3xl mx-auto bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 p-4">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Captured Pages</h2>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {pages.map((p, idx) => (
+              <div key={p.id} className="min-w-[170px] max-w-[170px] border border-gray-200 dark:border-slate-700 rounded-lg p-2 shrink-0">
+                <img src={p.previewUrl} alt={`Captured page ${idx + 1}`} className="w-full h-28 object-cover rounded" />
+                <div className="mt-2 flex flex-col gap-1">
+                  <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => setReplaceIndex(idx)}>
+                    Retake
+                  </button>
+                  <div className="flex gap-1">
+                    <button type="button" className="btn-secondary text-xs px-2 py-1 flex-1" onClick={() => movePage(idx, -1)} disabled={idx === 0}>
+                      ←
+                    </button>
+                    <button type="button" className="btn-secondary text-xs px-2 py-1 flex-1" onClick={() => movePage(idx, 1)} disabled={idx === pages.length - 1}>
+                      →
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50"
+                    onClick={async () => {
+                      try {
+                        const deleteResp = await fetch(
+                          `/api/capture-sessions/${sessionId}/pages/${p.id}?token=${encodeURIComponent(token)}`,
+                          { method: 'DELETE' }
+                        )
+                        if (!deleteResp.ok) {
+                          throw new Error('Failed to delete page')
+                        }
+                        setPages((prev) => prev.filter((_, i) => i !== idx))
+                        if (replaceIndex === idx) setReplaceIndex(null)
+                      } catch (e) {
+                        setError(e?.response?.data?.detail || e?.message || 'Failed to delete page')
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default CaptureSession
