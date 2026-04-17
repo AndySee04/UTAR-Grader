@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 import io
 import uuid
 import os
@@ -102,6 +102,8 @@ def _capture_page_payload(session: dict, page: dict) -> dict:
         "index": page["index"],
         "width": page["width"],
         "height": page["height"],
+        "processed_success": bool(page.get("processed_success")),
+        "processing_note": page.get("processing_note"),
         "created_at": page["created_at"],
         "preview_url": (
             f"/api/capture-sessions/{session['id']}/pages/{page['id']}/image"
@@ -239,6 +241,27 @@ def _crop_foreground_bgr(bgr_img):
     return cropped
 
 
+def _binarize_for_ocr_bgr(bgr_img):
+    """
+    Convert processed page into high-contrast binary image for OCR.
+    Returns 3-channel BGR image (black/white only).
+    """
+    gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    adaptive = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        31,
+        11,
+    )
+    # Blend with Otsu to stabilize across uneven lighting.
+    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    binary = cv2.bitwise_and(adaptive, otsu)
+    return cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+
+
 def _warp_document_quad_bgr(bgr_img):
     """
     Detect 4-corner document contour and perspective-warp it.
@@ -275,14 +298,14 @@ def _warp_document_quad_bgr(bgr_img):
     return cv2.warpPerspective(bgr_img, matrix, (max_width, max_height))
 
 
-def _server_scan_capture_image(image: Image.Image) -> Image.Image:
+def _server_scan_capture_image(image: Image.Image) -> Tuple[Image.Image, bool, str]:
     """
     Server-side document detection/straighten+crop on laptop.
-    Falls back to normalized original when detection fails.
+    Returns (image, success_flag, note).
     """
     normalized = _normalize_capture_image(image)
     if cv2 is None or np is None:
-        return normalized
+        return normalized, False, "opencv-unavailable"
 
     try:
         rgb = np.array(normalized)
@@ -291,10 +314,17 @@ def _server_scan_capture_image(image: Image.Image) -> Image.Image:
         warped = _warp_document_quad_bgr(bgr)
         deskewed = _deskew_bgr_image(warped)
         cropped = _crop_foreground_bgr(deskewed)
-        final_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
-        return Image.fromarray(final_rgb).convert("RGB")
+        src_area = float(max(1, bgr.shape[0] * bgr.shape[1]))
+        crop_area = float(max(1, cropped.shape[0] * cropped.shape[1]))
+        # Require meaningful crop reduction; tiny edge trims should not be "success".
+        crop_reduction = 1.0 - (crop_area / src_area)
+        processed_success = bool(crop_reduction >= 0.05)
+        ocr_ready = _binarize_for_ocr_bgr(cropped)
+        final_rgb = cv2.cvtColor(ocr_ready, cv2.COLOR_BGR2RGB)
+        note = "processed-cropped" if processed_success else "fallback-no-crop"
+        return Image.fromarray(final_rgb).convert("RGB"), processed_success, note
     except Exception:
-        return normalized
+        return normalized, False, "processing-error"
 
 
 def _save_document_bytes(
@@ -685,7 +715,8 @@ async def upload_capture_session_page(
 
     try:
         pil_img = Image.open(io.BytesIO(content))
-        processed = _normalize_capture_image(pil_img)
+        normalized = _normalize_capture_image(pil_img)
+        processed, processed_success, processing_note = _server_scan_capture_image(pil_img)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image upload.")
 
@@ -695,17 +726,22 @@ async def upload_capture_session_page(
     page_dir = _capture_session_dir(session["exam_id"], session_id)
     page_dir.mkdir(parents=True, exist_ok=True)
     source_path = page_dir / f"{page_index:03d}_{page_id}_source.png"
+    processed_path = page_dir / f"{page_index:03d}_{page_id}_processed.png"
     preview_path = page_dir / f"{page_index:03d}_{page_id}_preview.jpg"
-    processed.save(source_path, format="PNG", optimize=True)
+    normalized.save(source_path, format="PNG", optimize=True)
+    processed.save(processed_path, format="PNG", optimize=True)
     processed.save(preview_path, format="JPEG", quality=78, optimize=True, progressive=True)
 
     page = {
         "id": page_id,
         "index": page_index,
         "source_path": str(source_path),
+        "processed_path": str(processed_path),
         "preview_path": str(preview_path),
         "width": processed.width,
         "height": processed.height,
+        "processed_success": bool(processed_success),
+        "processing_note": processing_note,
         "created_at": datetime.utcnow(),
     }
     pages.append(page)
@@ -762,9 +798,12 @@ async def delete_capture_session_page(
         raise HTTPException(status_code=404, detail="Capture page not found")
 
     target_source = Path(target.get("source_path") or "")
+    target_processed = Path(target.get("processed_path") or "")
     target_preview = Path(target.get("preview_path") or "")
     if target_source.exists():
         target_source.unlink(missing_ok=True)
+    if target_processed.exists():
+        target_processed.unlink(missing_ok=True)
     if target_preview.exists():
         target_preview.unlink(missing_ok=True)
 
@@ -819,11 +858,11 @@ async def finalize_capture_session(
 
     pil_pages = []
     for p in pages:
-        page_path = Path(p.get("source_path") or "")
+        page_path = Path(p.get("processed_path") or p.get("source_path") or "")
         if not page_path.exists():
             raise HTTPException(status_code=400, detail="One or more capture pages are missing.")
         with Image.open(page_path) as img:
-            pil_pages.append(_server_scan_capture_image(img))
+            pil_pages.append(img.convert("RGB"))
 
     pdf_buffer = io.BytesIO()
     first, rest = pil_pages[0], pil_pages[1:]

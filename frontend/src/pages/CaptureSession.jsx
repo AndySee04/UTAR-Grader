@@ -16,6 +16,7 @@ function CaptureSession() {
   const [capturing, setCapturing] = useState(false)
   const [pages, setPages] = useState([])
   const [replaceIndex, setReplaceIndex] = useState(null)
+  const [activePageId, setActivePageId] = useState(null)
   const [finalizing, setFinalizing] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [captureStatus, setCaptureStatus] = useState('')
@@ -59,7 +60,9 @@ function CaptureSession() {
           id: p.id,
           previewUrl: p.preview_url,
           width: p.width,
-          height: p.height
+          height: p.height,
+          processedSuccess: p.processed_success !== false,
+          processingNote: p.processing_note || ''
         })))
       } catch (err) {
         if (!mounted) return
@@ -171,7 +174,9 @@ function CaptureSession() {
         id: uploaded?.id || crypto.randomUUID(),
         previewUrl: uploaded?.preview_url || '',
         width: uploaded?.width,
-        height: uploaded?.height
+        height: uploaded?.height,
+        processedSuccess: uploaded?.processed_success !== false,
+        processingNote: uploaded?.processing_note || ''
       }
       if (replaceIndex != null && pages[replaceIndex]?.id) {
         await fetch(
@@ -202,6 +207,29 @@ function CaptureSession() {
       copy.splice(target, 0, item)
       return copy
     })
+  }
+
+  const deletePageById = async (pageId, opts = {}) => {
+    const { updateState = true } = opts
+    const deleteResp = await fetch(
+      `/api/capture-sessions/${sessionId}/pages/${pageId}?token=${encodeURIComponent(token)}`,
+      { method: 'DELETE' }
+    )
+    if (!deleteResp.ok) {
+      throw new Error('Failed to delete page')
+    }
+    if (!updateState) return
+
+    let deletedIndex = -1
+    setPages((prev) => {
+      deletedIndex = prev.findIndex((p) => p.id === pageId)
+      return prev.filter((p) => p.id !== pageId)
+    })
+    setActivePageId((prev) => (prev === pageId ? null : prev))
+    if (replaceIndex != null && deletedIndex >= 0) {
+      if (deletedIndex === replaceIndex) setReplaceIndex(null)
+      else if (deletedIndex < replaceIndex) setReplaceIndex(replaceIndex - 1)
+    }
   }
 
   const handleFinalizeCapture = async () => {
@@ -251,6 +279,9 @@ function CaptureSession() {
       </div>
     )
   }
+
+  const activePage = pages.find((p) => p.id === activePageId) || null
+  const activePageIndex = activePage ? pages.findIndex((p) => p.id === activePage.id) : -1
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-4 space-y-4">
@@ -305,46 +336,96 @@ function CaptureSession() {
       {!completed && pages.length > 0 && (
         <div className="max-w-3xl mx-auto bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 p-4">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100 mb-3">Captured Pages</h2>
-          <div className="flex gap-3 overflow-x-auto pb-2">
+          <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">
+            Tiny preview cubes: tap to open full image. Red border means processing fallback.
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-2">
             {pages.map((p, idx) => (
-              <div key={p.id} className="min-w-[170px] max-w-[170px] border border-gray-200 dark:border-slate-700 rounded-lg p-2 shrink-0">
-                <img src={p.previewUrl} alt={`Captured page ${idx + 1}`} className="w-full h-28 object-cover rounded" />
-                <div className="mt-2 flex flex-col gap-1">
-                  <button type="button" className="btn-secondary text-xs px-2 py-1" onClick={() => setReplaceIndex(idx)}>
-                    Retake
-                  </button>
-                  <div className="flex gap-1">
-                    <button type="button" className="btn-secondary text-xs px-2 py-1 flex-1" onClick={() => movePage(idx, -1)} disabled={idx === 0}>
-                      ←
-                    </button>
-                    <button type="button" className="btn-secondary text-xs px-2 py-1 flex-1" onClick={() => movePage(idx, 1)} disabled={idx === pages.length - 1}>
-                      →
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50"
-                    onClick={async () => {
-                      try {
-                        const deleteResp = await fetch(
-                          `/api/capture-sessions/${sessionId}/pages/${p.id}?token=${encodeURIComponent(token)}`,
-                          { method: 'DELETE' }
-                        )
-                        if (!deleteResp.ok) {
-                          throw new Error('Failed to delete page')
-                        }
-                        setPages((prev) => prev.filter((_, i) => i !== idx))
-                        if (replaceIndex === idx) setReplaceIndex(null)
-                      } catch (e) {
-                        setError(e?.response?.data?.detail || e?.message || 'Failed to delete page')
-                      }
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setActivePageId(p.id)}
+                className={`min-w-[76px] w-[76px] rounded-lg p-1 border-2 shrink-0 ${
+                  p.processedSuccess ? 'border-emerald-400' : 'border-red-500'
+                }`}
+                title={p.processingNote || (p.processedSuccess ? 'Processed successfully' : 'Processing fallback')}
+              >
+                <img src={p.previewUrl} alt={`Captured page ${idx + 1}`} className="w-full h-[58px] object-cover rounded" />
+                <div className="mt-1 text-[11px] text-center text-gray-700 dark:text-slate-300">#{idx + 1}</div>
+              </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {!completed && activePage && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                Page {activePageIndex + 1}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActivePageId(null)}
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-slate-200"
+              >
+                Close
+              </button>
+            </div>
+            <img
+              src={activePage.previewUrl}
+              alt={`Captured page ${activePageIndex + 1}`}
+              className={`w-full max-h-[65vh] object-contain rounded border-2 ${
+                activePage.processedSuccess ? 'border-emerald-400' : 'border-red-500'
+              }`}
+            />
+            {!activePage.processedSuccess && (
+              <p className="text-xs text-red-600">
+                Processing fallback detected for this page. You can retake for better detection.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-secondary flex-1"
+                onClick={() => {
+                  setReplaceIndex(activePageIndex)
+                  setActivePageId(null)
+                }}
+              >
+                Retake
+              </button>
+              <button
+                type="button"
+                className="text-xs px-3 py-2 rounded border border-red-300 text-red-600 hover:bg-red-50"
+                onClick={async () => {
+                  try {
+                    await deletePageById(activePage.id)
+                  } catch (e) {
+                    setError(e?.message || 'Failed to delete page')
+                  }
+                }}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => movePage(activePageIndex, -1)}
+                disabled={activePageIndex <= 0}
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => movePage(activePageIndex, 1)}
+                disabled={activePageIndex < 0 || activePageIndex >= pages.length - 1}
+              >
+                →
+              </button>
+            </div>
           </div>
         </div>
       )}

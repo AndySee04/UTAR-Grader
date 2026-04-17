@@ -410,6 +410,8 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Improve server image pipeline with auto deskew (minAreaRect) + Otsu contour crop
 - [x] Strengthen server capture scan with Hough-line deskew + quad warp + tighter crop
 - [x] Align server warp step to reference contour code (bilateral + Canny10/20 + biggest quad + A4)
+- [x] Return per-page processing status to phone gallery (red border fallback + full-image modal actions)
+- [x] Fix gallery status misclassification and add binary black/white page output for OCR
 
 ### Next Steps
 
