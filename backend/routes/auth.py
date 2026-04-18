@@ -49,28 +49,10 @@ from services.email_service import (
 
 router = APIRouter()
 
-
 def _picture_cache_version(user: User):
     if user.profile_picture:
         return hashlib.sha1(user.profile_picture).hexdigest()[:16]
     return None
-
-
-def _user_to_response(user: User) -> UserResponse:
-    picture_version = _picture_cache_version(user)
-    return UserResponse(
-        id=user.id,
-        email=user.email,
-        name=user.name,
-        profile_picture_url=(
-            f"/api/account/profile-picture/{user.id}?v={picture_version}"
-            if picture_version
-            else None
-        ),
-        email_verified=bool(getattr(user, "email_verified", True)),
-        created_at=user.created_at,
-    )
-
 
 def _send_verification_email_task(to_email: str, name, verify_jwt: str) -> None:
     verify_url = registration_verify_url(verify_jwt)
