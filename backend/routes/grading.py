@@ -487,64 +487,6 @@ async def get_exam_grades(
     )
 
 
-@router.get("/exams/{exam_id}/grades/{document_id}", response_model=StudentGradeSummary)
-async def get_student_grades(
-    exam_id: str,
-    document_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get grades for a specific student."""
-    exam = db.query(Exam).filter(
-        Exam.id == exam_id,
-        Exam.user_id == current_user.id
-    ).first()
-    
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
-    
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.exam_id == exam_id,
-        Document.doc_type == "student_answer"
-    ).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Student grades not found")
-    
-    grades = db.query(Grade).join(StudentAnswer).filter(
-        StudentAnswer.document_id == document_id
-    ).all()
-    
-    grade_details = []
-    for g in grades:
-        sa = g.student_answer
-        q = sa.question if sa else None
-        mg = q
-        
-        grade_details.append(StudentGradeDetail(
-            id=str(g.id),
-            question_number=q.question_number if q else "",
-            question_text=q.question_text if q else "",
-            answer_scheme=mg.answer_scheme if mg else "",
-            student_answer=sa.answer_text if sa else "",
-            score=float(g.score) if g.score is not None else None,
-            max_marks=float(g.max_marks) if g.max_marks is not None else None,
-            confidence=float(g.confidence) if g.confidence is not None else None,
-            feedback=g.feedback,
-            is_overridden=g.is_overridden
-        ))
-    
-    total_score, total_max, pct = _student_totals(db, document_id)
-    return StudentGradeSummary(
-        document_id=document_id,
-        student_name=doc.file_name,
-        total_score=total_score,
-        total_max_marks=total_max,
-        percentage=pct,
-        grades=grade_details
-    )
-
-
 @router.put("/grades/{grade_id}", response_model=GradeResponse)
 async def override_grade(
     grade_id: str,
@@ -575,37 +517,3 @@ async def override_grade(
     
     db.refresh(grade)
     return grade
-
-
-@router.get("/exams/{exam_id}/progress")
-async def get_grading_progress(
-    exam_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get grading progress for an exam."""
-    exam = db.query(Exam).filter(
-        Exam.id == exam_id,
-        Exam.user_id == current_user.id
-    ).first()
-    
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
-    
-    total = db.query(Document).filter(
-        Document.exam_id == exam_id,
-        Document.doc_type == "student_answer"
-    ).count()
-    
-    graded = db.query(Document).join(StudentAnswer).filter(
-        Document.exam_id == exam_id,
-        Document.doc_type == "student_answer"
-    ).distinct().count()
-    
-    return {
-        "exam_id": exam_id,
-        "status": exam.status,
-        "total_students": total,
-        "graded_students": graded,
-        "progress_percentage": (graded / total * 100) if total > 0 else 0
-    }

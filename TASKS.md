@@ -255,10 +255,10 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 
 ### Housekeeping & dead code (safe removals)
 
-- [x] Audit unused Python/JS helpers (grep + vulture-style review); documented larger optional deletions (e.g. unused `PDFService` methods) without removing live API routes
+- [x] Audit unused Python/JS helpers (grep + vulture-style review); documented larger optional deletions (e.g. unused `PDFService` methods); unused **HTTP routes** later removed (see *Removed API routes* under API Endpoints Summary)
 - [x] `processing.py`: drop unused `base64` / `subprocess` imports; `for region in regions` in background OCR loop (no unused index)
 - [x] `schemas/marking_guide.py` + `routes/marking_guide.py`: remove unused `MarkingGuideListResponse`
-- [x] `frontend/src/services/api.js`: remove unused wrappers — `authAPI.logout`, `processingAPI.processExam` / `detectRegions` / `checkOCRHealth` / `checkLLMHealth`, `gradingAPI.getStudentGrades` / `getProgress` (backend endpoints unchanged; re-add client helpers if UI needs them)
+- [x] `frontend/src/services/api.js`: removed unused client wrappers (no `logout`, `processExam`, `detectRegions`, health checks, per-student grades GET, progress); **backend** unused routes removed to match (see API Endpoints Summary — *Removed API routes*).
 
 ### Files touched (high level)
 
@@ -314,74 +314,121 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 
 ## API Endpoints Summary
 
+Routes match the **current** FastAPI app (`backend/main.py` prefixes). Path parameters use names like `{exam_id}`, `{document_id}`, `{session_id}`, `{guide_id}`, `{region_id}`, `{grade_id}`, `{page_id}`.
+
+The **Task / when used** column ties each route to a **concrete action** in the current web app (`frontend/src`), so it is clear *why* the endpoint exists. If an endpoint is infrastructure-only, that is stated.
+
+### Core
+
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| GET | `/` | Smoke check: confirms the API process is up (message JSON). |
+| GET | `/health` | Liveness/readiness style check; not tied to a specific UI button. |
+
 ### Authentication
 
-| Method | Endpoint             | Description          |
-| ------ | -------------------- | -------------------- |
-| POST   | `/api/auth/register` | Register new teacher |
-| POST   | `/api/auth/login`    | Login, return JWT    |
-| GET    | `/api/auth/me`       | Get current user     |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| POST | `/api/auth/register` | **Register** — submit new teacher account on the Register page. |
+| POST | `/api/auth/login` | **Sign in** — submit email/password on Login; returns JWT for subsequent requests. |
+| GET | `/api/auth/me` | **Who am I** — after login or on app load, load current user (name, email, profile picture URL). |
 
 ### Exams
 
-| Method | Endpoint          | Description       |
-| ------ | ----------------- | ----------------- |
-| POST   | `/api/exams`      | Create exam       |
-| GET    | `/api/exams`      | List user's exams |
-| GET    | `/api/exams/{id}` | Get exam details  |
-| DELETE | `/api/exams/{id}` | Delete exam       |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| POST | `/api/exams` | **Create exam** — start a new exam session from the grading flow (new exam name). |
+| GET | `/api/exams` | **List exams** — populate the Exam List page (names, status, links to grade/results). |
+| GET | `/api/exams/{exam_id}` | **Load one exam** — open Grade Paper for that exam; refresh status while polling (e.g. after processing). |
+| PUT | `/api/exams/{exam_id}` | **Rename exam** — inline rename on Exam List. |
+| DELETE | `/api/exams/{exam_id}` | **Delete exam** — remove exam and related data from Exam List. |
 
-### Documents
+### Documents & capture sessions
 
-| Method | Endpoint                    | Description       |
-| ------ | --------------------------- | ----------------- |
-| POST   | `/api/exams/{id}/upload`    | Upload PDF        |
-| GET    | `/api/documents/{id}/pages` | Get PDF as images |
-| POST   | `/api/documents/{id}/crop`  | Save crop region  |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| POST | `/api/exams/{exam_id}/upload` | **Upload one PDF** — question paper, answer scheme, or a single student script. |
+| POST | `/api/exams/{exam_id}/upload-multiple` | **Upload many student PDFs** — batch student answer uploads. |
+| GET | `/api/exams/{exam_id}/documents` | **List documents** — show uploaded files per type (`question_paper`, `answer_scheme`, `student_answer`). |
+| DELETE | `/api/{document_id}` | **Remove a document** — delete one uploaded PDF from the exam. |
+| POST | `/api/{document_id}/crop` | **Save a crop** — after drawing a region on a page, store its bounding box (manual crop; no auto-detect in UI). |
+| GET | `/api/{document_id}/regions` | **List regions** — load all saved crops/OCR regions for that document (cropping UI, rebuild marking guide from question regions). |
+| PUT | `/api/{document_id}/regions/order` | **Reorder regions** — persist order of answer regions (e.g. per page). |
+| POST | `/api/exams/{exam_id}/capture-sessions` | **Start phone capture** — create a session and QR/link for capturing pages on a phone. |
+| GET | `/api/exams/{exam_id}/capture-sessions/{session_id}` | **Owner: session status** — desktop checks session state while phone is capturing. |
+| GET | `/api/capture-sessions/{session_id}` | **Public: session** — phone loads session using `token` query (no Bearer auth on this route as implemented). |
+| GET | `/api/capture-sessions/{session_id}/pages` | **Public: list pages** — phone gallery lists captured pages (`token` query). |
+| POST | `/api/capture-sessions/{session_id}/pages` | **Public: upload page** — phone posts a new photo/PDF page (`token` in form). |
+| GET | `/api/capture-sessions/{session_id}/pages/{page_id}/image` | **View page image** — preview thumbnail/full image for a captured page. |
+| DELETE | `/api/capture-sessions/{session_id}/pages/{page_id}` | **Delete a page** — retake/remove one page from the session. |
+| POST | `/api/capture-sessions/{session_id}/finalize` | **Finalize capture** — merge pages into a student PDF document on the server. |
+| POST | `/api/capture-sessions/{session_id}/continue` | **Continue** — move to “next student” capture while keeping the same exam (multi-student flow). |
+| POST | `/api/capture-sessions/{session_id}/exit` | **Exit session** — end phone capture without finalizing (cleanup signal). |
 
-### Processing
+### Processing (pages, OCR, regions)
 
-| Method | Endpoint                         | Description          |
-| ------ | -------------------------------- | -------------------- |
-| POST   | `/api/exams/{id}/process`        | Start OCR processing |
-| GET    | `/api/exams/{id}/extracted-text` | Get extracted text   |
-| POST   | `/api/regions/{id}/ocr`          | Run OCR on region    |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| GET | `/api/documents/{document_id}/pages` | **Page metadata** — list pages with dimensions for the crop viewer. |
+| GET | `/api/documents/{document_id}/pages/{page_number}/image` | **Render page** — fetch PNG for display while cropping or viewing. |
+| POST | `/api/regions/{region_id}/ocr` | **Run OCR** — extract text from a cropped region (after save crop or refresh). |
+| PATCH | `/api/regions/{region_id}` | **Edit region** — save edited OCR text, question number, marks; optional sync to student regions. |
+| DELETE | `/api/regions/{region_id}` | **Delete region** — remove one crop/region row. |
+| POST | `/api/regions/{region_id}/cleanup` | **LLM cleanup** — optional spelling/grammar cleanup of OCR text for a region. |
 
-### Marking Guide
+### Marking guide
 
-| Method | Endpoint                         | Description            |
-| ------ | -------------------------------- | ---------------------- |
-| POST   | `/api/exams/{id}/generate-guide` | Generate marking guide |
-| GET    | `/api/exams/{id}/marking-guide`  | Get marking guide      |
-| PUT    | `/api/marking-guide/{id}`        | Update question        |
-| DELETE | `/api/marking-guide/{id}`        | Delete question        |
-| POST   | `/api/exams/{id}/marking-guide`  | Add question           |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| POST | `/api/exams/{exam_id}/generate-guide` | **AI-generate guide** — build or enrich marking guide from documents (LLM path; user triggers from Grade Paper). |
+| GET | `/api/exams/{exam_id}/marking-guide` | **Load all questions** — fill the marking guide editor; also read before rebuild in “Process documents”. |
+| POST | `/api/exams/{exam_id}/marking-guide` | **Add question** — create one marking-guide row (manual add, or after process builds rows from crops). |
+| PUT | `/api/marking-guide/{guide_id}` | **Edit question** — update fields (text, marks, scheme, etc.) inline in the guide table. |
+| DELETE | `/api/marking-guide/{guide_id}` | **Remove one question row** — in the current app, called in a loop when **Process documents** rebuilds the guide: delete **all** existing questions first, then `POST` new rows from cropped question-paper regions (preserves scheme text by question number where possible). |
 
 ### Grading
 
-| Method | Endpoint                 | Description    |
-| ------ | ------------------------ | -------------- |
-| POST   | `/api/exams/{id}/grade`  | Start grading  |
-| GET    | `/api/exams/{id}/grades` | Get all grades |
-| PUT    | `/api/grades/{id}`       | Override score |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| POST | `/api/exams/{exam_id}/grade` | **Start grading** — enqueue/run automatic grading for all student scripts for this exam. |
+| GET | `/api/exams/{exam_id}/grades` | **Results overview** — load all students’ scores and per-question breakdown for Exam Results. |
+| PUT | `/api/grades/{grade_id}` | **Override score** — teacher edits a mark after auto-grading (Exam Results). |
 
 ### Reports
 
-| Method | Endpoint                         | Description          |
-| ------ | -------------------------------- | -------------------- |
-| GET    | `/api/exams/{id}/report/excel`   | Download Excel       |
-| GET    | `/api/documents/{id}/report/pdf` | Download student PDF |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| GET | `/api/exams/{exam_id}/report/excel` | **Export Excel** — download spreadsheet of results (Exam List). |
+| GET | `/api/exams/{exam_id}/report/pdf/{document_id}` | **One student PDF** — download report for one student (Exam Results). |
+| GET | `/api/exams/{exam_id}/report/all-pdfs` | **Zip all PDFs** — bulk download reports (Exam List). |
 
 ### Account
 
-| Method | Endpoint                | Description     |
-| ------ | ----------------------- | --------------- |
-| GET    | `/api/account`          | Get profile     |
-| PUT    | `/api/account`          | Update profile  |
-| POST   | `/api/account/profile-picture` | Upload/replace profile picture |
-| DELETE | `/api/account/profile-picture` | Remove current profile picture |
-| PUT    | `/api/account/password` | Change password |
-| DELETE | `/api/account`          | Delete account  |
+| Method | Endpoint | Task / when used |
+| ------ | -------- | ------------------ |
+| GET | `/api/account` | **Load profile** — Manage Account page. |
+| PUT | `/api/account` | **Update name** — save display name. |
+| POST | `/api/account/profile-picture` | **Upload avatar** — set profile picture file. |
+| DELETE | `/api/account/profile-picture` | **Remove avatar** — clear profile picture. |
+| GET | `/api/account/profile-picture/{user_id}` | **Show avatar image** — `img src` URL returned in `/me`; browser loads the image bytes. |
+| PUT | `/api/account/password` | **Change password** — authenticated password change form. |
+| DELETE | `/api/account` | **Delete account** — remove teacher account and sign out. |
+
+### Removed API routes (reference)
+
+These endpoints were removed from the backend as unused by the current web client (`frontend/src` + `CaptureSession.jsx`). Restore from git history if a future client needs them.
+
+| Method | Endpoint | Former purpose |
+| ------ | -------- | ---------------- |
+| POST | `/api/auth/logout` | Ack logout (JWT discarded client-side only) |
+| GET | `/api/{document_id}` | Get single document metadata |
+| POST | `/api/documents/{document_id}/detect-regions` | CV auto-detect regions (unused; UI uses manual crop) |
+| POST | `/api/exams/{exam_id}/process` | Background auto-detect + OCR for exam docs (never called by UI) |
+| GET | `/api/health/ocr` | OCR service health |
+| GET | `/api/health/llm` | LLM service health |
+| GET | `/api/marking-guide/{guide_id}` | Get one marking-guide row |
+| GET | `/api/exams/{exam_id}/grades/{document_id}` | Grades for one student document |
+| GET | `/api/exams/{exam_id}/progress` | Grading progress counts |
 
 ---
 

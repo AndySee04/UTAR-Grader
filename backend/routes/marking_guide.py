@@ -208,21 +208,6 @@ async def add_question(
     return _to_response(q)
 
 
-@router.get("/marking-guide/{guide_id}", response_model=MarkingGuideResponse)
-async def get_question(
-    guide_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    guide = db.query(Question).join(Exam).filter(
-        Question.id == guide_id,
-        Exam.user_id == current_user.id
-    ).first()
-    if not guide:
-        raise HTTPException(status_code=404, detail="Question not found")
-    return _to_response(guide)
-
-
 @router.put("/marking-guide/{guide_id}", response_model=MarkingGuideResponse)
 async def update_question(
     guide_id: str,

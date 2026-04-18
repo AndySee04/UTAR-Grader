@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import get_db
 from models.user import User
-from schemas.auth import UserCreate, UserLogin, UserResponse, Token, MessageResponse
+from schemas.auth import UserCreate, UserLogin, UserResponse, Token
 from utils.auth import (
     get_password_hash,
     verify_password,
@@ -95,11 +95,3 @@ async def get_me(current_user: User = Depends(get_current_user)):
         ),
         "created_at": current_user.created_at,
     }
-
-
-@router.post("/logout", response_model=MessageResponse)
-async def logout(current_user: User = Depends(get_current_user)):
-    """Logout current user (client should discard token)."""
-    # JWT tokens are stateless, so we just return success
-    # Client is responsible for removing the token
-    return {"message": "Successfully logged out"}

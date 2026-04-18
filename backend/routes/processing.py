@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from typing import List, Optional
 import io
 import sys
 import os
@@ -17,7 +16,6 @@ from models.extracted_text import ExtractedText
 from models.llm_response import LLMResponse
 from utils.auth import get_current_user
 from services.pdf_service import pdf_service
-from services.cv_service import cv_service
 from services.ocr_service import ocr_service, ocr_service_printed
 from services.llm_service import llm_service
 
@@ -84,59 +82,6 @@ async def get_all_pages_info(
             pass
     
     return {"document_id": document_id, "page_count": document.page_count, "pages": pages}
-
-
-@router.post("/documents/{document_id}/detect-regions")
-async def detect_regions(
-    document_id: str,
-    page_number: Optional[int] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Auto-detect text regions in a document using computer vision."""
-    document = db.query(Document).join(Exam).filter(
-        Document.id == document_id,
-        Exam.user_id == current_user.id
-    ).first()
-    
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    
-    results = []
-    pages_to_process = [page_number] if page_number else range(1, (document.page_count or 0) + 1)
-    
-    for pg in pages_to_process:
-        try:
-            img = pdf_service.get_page_as_image(document.file_path, pg)
-            regions = cv_service.detect_text_regions(img)
-            
-            for idx, region in enumerate(regions):
-                # Save to database
-                extracted = ExtractedText(
-                    document_id=document_id,
-                    page_number=pg,
-                    region_type=document.doc_type.replace("_paper", "").replace("_scheme", ""),
-                    bounding_box={
-                        "x": region.x,
-                        "y": region.y,
-                        "width": region.width,
-                        "height": region.height
-                    }
-                )
-                db.add(extracted)
-                results.append({
-                    "page_number": pg,
-                    "region_index": idx,
-                    "x": region.x,
-                    "y": region.y,
-                    "width": region.width,
-                    "height": region.height
-                })
-        except Exception as e:
-            results.append({"page_number": pg, "error": str(e)})
-    
-    db.commit()
-    return {"document_id": document_id, "regions_detected": len(results), "regions": results}
 
 
 @router.post("/regions/{region_id}/ocr")
@@ -308,96 +253,6 @@ async def update_region_text(
     }
 
 
-@router.post("/exams/{exam_id}/process")
-async def process_exam_documents(
-    exam_id: str,
-    current_user: User = Depends(get_current_user),
-    background_tasks: BackgroundTasks = None,
-    db: Session = Depends(get_db)
-):
-    """Process all documents for an exam (detect regions + OCR). Returns immediately."""
-    exam = db.query(Exam).filter(
-        Exam.id == exam_id,
-        Exam.user_id == current_user.id
-    ).first()
-    
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
-    
-    # Update status
-    exam.status = "processing"
-    db.commit()
-    
-    # Run in background so the API returns immediately.
-    # We create a new DB session inside the background task.
-    def _run_in_bg(exam_id_local: str):
-        from database import SessionLocal
-        bg_db = SessionLocal()
-        try:
-            process_exam_background(exam_id_local, bg_db)
-        finally:
-            bg_db.close()
-
-    if background_tasks is not None:
-        background_tasks.add_task(_run_in_bg, exam_id)
-    else:
-        # Fallback (should not happen): run synchronously
-        _run_in_bg(exam_id)
-
-    return {"message": "Processing started", "exam_id": exam_id, "status": "processing"}
-
-
-def process_exam_background(exam_id: str, db: Session):
-    """Background task to process exam documents."""
-    try:
-        documents = db.query(Document).filter(Document.exam_id == exam_id).all()
-        to_process = [d for d in documents if d.doc_type != "student_answer"]
-        total_docs = len(to_process)
-        print(f"[Processing] Started exam {exam_id}: {total_docs} document(s) to process (question paper + answer scheme)", flush=True)
-        for idx, doc in enumerate(to_process, 1):
-            if doc.doc_type == "question_paper":
-                existing = db.query(ExtractedText).filter(ExtractedText.document_id == doc.id).count()
-                if existing > 0:
-                    print(f"[Processing] Question paper already has regions, skipping.", flush=True)
-                    continue
-            print(f"[Processing] ({idx}/{total_docs}) {doc.doc_type}", flush=True)
-            page_count = doc.page_count or 0
-            for pg in range(1, page_count + 1):
-                try:
-                    print(f"[Processing]   Page {pg}/{page_count} — loading image...", flush=True)
-                    img = pdf_service.get_page_as_image(doc.file_path, pg)
-                    regions = cv_service.detect_text_regions(img)
-                    print(f"[Processing]   Page {pg}/{page_count} — detected {len(regions)} region(s), running OCR...", flush=True)
-                    for region in regions:
-                        cropped = cv_service.crop_region(img, region)
-                        # Use printed-text model for question paper pages, handwriting model for others
-                        ocr = ocr_service_printed if doc.doc_type == "question_paper" else ocr_service
-                        text, _ = ocr.extract_text_from_image(cropped)
-                        extracted = ExtractedText(
-                            document_id=doc.id,
-                            page_number=pg,
-                            region_type=doc.doc_type.replace("_paper", "").replace("_scheme", ""),
-                            bounding_box={
-                                "x": region.x,
-                                "y": region.y,
-                                "width": region.width,
-                                "height": region.height
-                            },
-                            raw_text=text
-                        )
-                        db.add(extracted)
-                except Exception as page_err:
-                    print(f"[Processing]   Page {pg}/{page_count} — error: {page_err}", flush=True)
-        db.commit()
-        exam = db.query(Exam).filter(Exam.id == exam_id).first()
-        if exam:
-            exam.status = "draft"
-            db.commit()
-        print(f"[Processing] Completed exam {exam_id}. Status set to draft.", flush=True)
-    except Exception as e:
-        print(f"[Processing] Error processing exam {exam_id}: {e}", flush=True)
-
-
 @router.post("/regions/{region_id}/cleanup")
 async def cleanup_region_text(
     region_id: str,
@@ -485,23 +340,3 @@ async def cleanup_region_text(
         "error": llm_error
     }
     return payload
-
-
-@router.get("/health/ocr")
-async def check_ocr_health():
-    """Check if OCR service is ready."""
-    try:
-        # This will trigger lazy loading of the model
-        return {"status": "ready", "model": ocr_service.model_name}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@router.get("/health/llm")
-async def check_llm_health():
-    """Check if LLM service (Ollama) is available."""
-    is_healthy = await llm_service.check_health()
-    if is_healthy:
-        return {"status": "ready", "model": llm_service.model}
-    else:
-        return {"status": "error", "message": "Ollama not available or model not loaded"}
