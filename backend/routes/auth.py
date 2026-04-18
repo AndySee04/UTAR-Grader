@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
@@ -81,6 +83,36 @@ def _send_verification_email_task(to_email: str, name, verify_jwt: str) -> None:
     )
 
 
+def _upsert_user_on_register(
+    db: Session,
+    existing: Optional[User],
+    user_data: UserCreate,
+    hashed_password: str,
+    *,
+    verification_disabled: bool,
+) -> User:
+    """Create or update user (upsert)."""
+    if existing:
+        existing.password = hashed_password
+        existing.name = user_data.name
+        if verification_disabled:
+            existing.email_verified = True
+        db.commit()
+        db.refresh(existing)
+        return existing
+    email_verified = True if verification_disabled else False
+    user_out = User(
+        email=user_data.email,
+        password=hashed_password,
+        name=user_data.name,
+        email_verified=email_verified,
+    )
+    db.add(user_out)
+    db.commit()
+    db.refresh(user_out)
+    return user_out
+
+
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Create user with email_verified=False and send link, unless verification is disabled."""
@@ -94,23 +126,9 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
     if EMAIL_VERIFICATION_DISABLED:
         hashed_password = get_password_hash(user_data.password)
-        if existing:
-            existing.password = hashed_password
-            existing.name = user_data.name
-            existing.email_verified = True
-            db.commit()
-            db.refresh(existing)
-            user_out = existing
-        else:
-            user_out = User(
-                email=user_data.email,
-                password=hashed_password,
-                name=user_data.name,
-                email_verified=True,
-            )
-            db.add(user_out)
-            db.commit()
-            db.refresh(user_out)
+        user_out = _upsert_user_on_register(
+            db, existing, user_data, hashed_password, verification_disabled=True
+        )
         access_token = create_access_token(
             data={"sub": user_out.id},
             expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
@@ -129,22 +147,9 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         )
 
     hashed_password = get_password_hash(user_data.password)
-    if existing:
-        existing.password = hashed_password
-        existing.name = user_data.name
-        db.commit()
-        db.refresh(existing)
-        user_out = existing
-    else:
-        user_out = User(
-            email=user_data.email,
-            password=hashed_password,
-            name=user_data.name,
-            email_verified=False,
-        )
-        db.add(user_out)
-        db.commit()
-        db.refresh(user_out)
+    user_out = _upsert_user_on_register(
+        db, existing, user_data, hashed_password, verification_disabled=False
+    )
 
     verify_jwt = create_email_verification_token(user_out.id, user_out.email)
     await asyncio.to_thread(
