@@ -49,7 +49,7 @@ class MessageResponse(BaseModel):
 
 
 class RegisterResponse(BaseModel):
-    """Normal signup: only message + email until verified. Dev bypass may include user + token."""
+    """Registration response: message and email; optional user and access_token for clients that support them."""
 
     message: str
     email: EmailStr

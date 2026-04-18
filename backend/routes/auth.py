@@ -36,7 +36,6 @@ from utils.auth import (
 )
 from config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
-    EMAIL_VERIFICATION_DISABLED,
     REGISTRATION_VERIFY_EXPIRE_HOURS,
     PASSWORD_RESET_EXPIRE_HOURS,
     smtp_configured,
@@ -83,29 +82,24 @@ def _send_verification_email_task(to_email: str, name, verify_jwt: str) -> None:
     )
 
 
-def _upsert_user_on_register(
+def _upsert_user_pending_verification(
     db: Session,
     existing: Optional[User],
     user_data: UserCreate,
     hashed_password: str,
-    *,
-    verification_disabled: bool,
 ) -> User:
-    """Create or update user (upsert)."""
+    """Create or update unverified registration row; does not set email_verified=True."""
     if existing:
         existing.password = hashed_password
         existing.name = user_data.name
-        if verification_disabled:
-            existing.email_verified = True
         db.commit()
         db.refresh(existing)
         return existing
-    email_verified = True if verification_disabled else False
     user_out = User(
         email=user_data.email,
         password=hashed_password,
         name=user_data.name,
-        email_verified=email_verified,
+        email_verified=False,
     )
     db.add(user_out)
     db.commit()
@@ -115,7 +109,7 @@ def _upsert_user_on_register(
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Create user with email_verified=False and send link, unless verification is disabled."""
+    """Create user with email_verified=False and send verification link (SMTP required)."""
     existing = db.query(User).filter(User.email == user_data.email).first()
 
     if existing and existing.email_verified:
@@ -124,32 +118,14 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
 
-    if EMAIL_VERIFICATION_DISABLED:
-        hashed_password = get_password_hash(user_data.password)
-        user_out = _upsert_user_on_register(
-            db, existing, user_data, hashed_password, verification_disabled=True
-        )
-        access_token = create_access_token(
-            data={"sub": user_out.id},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-        )
-        return RegisterResponse(
-            message="Account created.",
-            email=user_out.email,
-            user=_user_to_response(user_out),
-            access_token=access_token,
-        )
-
     if not smtp_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Email verification is not configured on this server. Set SMTP_USER and SMTP_PASSWORD, or enable EMAIL_VERIFICATION_DISABLED for local development only.",
+            detail="Email verification is not configured on this server. Set SMTP_USER and SMTP_PASSWORD.",
         )
 
     hashed_password = get_password_hash(user_data.password)
-    user_out = _upsert_user_on_register(
-        db, existing, user_data, hashed_password, verification_disabled=False
-    )
+    user_out = _upsert_user_pending_verification(db, existing, user_data, hashed_password)
 
     verify_jwt = create_email_verification_token(user_out.id, user_out.email)
     await asyncio.to_thread(

@@ -50,7 +50,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Frontend: Login page
 - [x] Frontend: Registration page
 - [x] Frontend: Auth context/state management
-- [x] Email verification at registration (`users.email_verified`, JWT link; idempotent verify; grading-style email template)
+- [x] Email verification at registration (`users.email_verified`, JWT link; idempotent verify; grading-style email template); SMTP required
 - [x] Forgot / reset password (`POST /auth/forgot-password`, `POST /auth/reset-password`; JWT; email matches verification layout)
 
 ### Files Created:
