@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from pathlib import Path
 from fastapi.responses import Response
 import hashlib
+import shutil
 from PIL import Image
 import io
 
@@ -13,10 +15,50 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import get_db
 from models.user import User
+from models.exam import Exam
+from models.document import Document
+from models.extracted_text import ExtractedText
+from models.question import Question
+from models.student_answer import StudentAnswer
+from models.grade import Grade
+from models.llm_response import LLMResponse
 from schemas.auth import UserResponse, UserUpdate, PasswordChange, MessageResponse
 from utils.auth import get_current_user, get_password_hash, verify_password
+from config import UPLOAD_DIR
 
 router = APIRouter()
+
+
+def _purge_exam(db: Session, exam_id: str) -> list[str]:
+    """
+    Remove one exam and dependent rows in FK-safe order. Returns stored PDF paths (unlink after commit).
+    Questions must be deleted before extracted_texts (questions.extracted_text_id).
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        return []
+
+    doc_paths = [d[0] for d in db.query(Document.file_path).filter(Document.exam_id == exam.id).all()]
+    doc_ids = [d[0] for d in db.query(Document.id).filter(Document.exam_id == exam.id).all()]
+    sa_query = (
+        db.query(StudentAnswer).filter(StudentAnswer.document_id.in_(doc_ids)) if doc_ids else None
+    )
+    sa_ids = [sa.id for sa in sa_query.all()] if sa_query is not None else []
+
+    if sa_ids:
+        db.query(Grade).filter(Grade.student_answer_id.in_(sa_ids)).delete(synchronize_session=False)
+    db.query(LLMResponse).filter(LLMResponse.exam_id == exam.id).delete(synchronize_session=False)
+    if sa_ids:
+        db.query(StudentAnswer).filter(StudentAnswer.id.in_(sa_ids)).delete(synchronize_session=False)
+
+    db.query(Question).filter(Question.exam_id == exam.id).delete(synchronize_session=False)
+    if doc_ids:
+        db.query(ExtractedText).filter(ExtractedText.document_id.in_(doc_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(Document).filter(Document.exam_id == exam.id).delete(synchronize_session=False)
+    db.delete(exam)
+    return doc_paths
 
 _ALLOWED_PROFILE_PICTURE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
@@ -157,8 +199,40 @@ async def delete_account(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delete account and all associated data."""
-    db.delete(current_user)
-    db.commit()
+    """Delete account after removing all exams and related rows (same dependency order as exam delete)."""
+    uid = current_user.id
+    exam_ids = [row[0] for row in db.query(Exam.id).filter(Exam.user_id == uid).all()]
+    all_doc_paths: list[str] = []
+    try:
+        for eid in exam_ids:
+            all_doc_paths.extend(_purge_exam(db, eid))
+        user = db.query(User).filter(User.id == uid).first()
+        if user:
+            db.delete(user)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete account due to database constraints. Try deleting exams individually first.",
+        )
+
+    for file_path in all_doc_paths:
+        if not file_path:
+            continue
+        try:
+            p = Path(file_path)
+            if p.exists() and p.is_file():
+                p.unlink()
+        except Exception:
+            pass
+
+    for eid in exam_ids:
+        exam_upload_dir = Path(UPLOAD_DIR) / eid
+        if exam_upload_dir.exists():
+            try:
+                shutil.rmtree(exam_upload_dir, ignore_errors=True)
+            except Exception:
+                pass
 
     return {"message": "Account deleted successfully"}

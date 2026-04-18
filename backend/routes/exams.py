@@ -191,10 +191,13 @@ async def delete_exam(
 
     if sa_ids:
         db.query(StudentAnswer).filter(StudentAnswer.id.in_(sa_ids)).delete(synchronize_session=False)
-    if doc_ids:
-        db.query(ExtractedText).filter(ExtractedText.document_id.in_(doc_ids)).delete(synchronize_session=False)
 
+    # Questions reference extracted_texts — delete questions before extracted_texts.
     db.query(Question).filter(Question.exam_id == exam.id).delete(synchronize_session=False)
+    if doc_ids:
+        db.query(ExtractedText).filter(ExtractedText.document_id.in_(doc_ids)).delete(
+            synchronize_session=False
+        )
     db.query(Document).filter(Document.exam_id == exam.id).delete(synchronize_session=False)
     db.delete(exam)
     db.commit()

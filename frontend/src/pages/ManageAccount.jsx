@@ -113,7 +113,7 @@ function ManageAccount() {
       logout()
       navigate('/login')
     } catch (err) {
-      toast.error('Failed to delete account')
+      toast.error(err.response?.data?.detail || 'Failed to delete account')
     } finally {
       setDeletingAccount(false)
       setDeleteModalOpen(false)
