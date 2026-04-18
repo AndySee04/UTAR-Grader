@@ -10,9 +10,16 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from config import (
+    SECRET_KEY,
+    ALGORITHM,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REGISTRATION_VERIFY_EXPIRE_HOURS,
+)
 from database import get_db
 from models.user import User
+
+EMAIL_VERIFY_TYP = "email_verify"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
@@ -24,6 +31,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+
+def create_email_verification_token(user_id: str, email: str) -> str:
+    """Signed JWT for /verify-email links (stateless; idempotent when user is already verified)."""
+    return create_access_token(
+        data={"sub": user_id, "email": email, "typ": EMAIL_VERIFY_TYP},
+        expires_delta=timedelta(hours=REGISTRATION_VERIFY_EXPIRE_HOURS),
+    )
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:

@@ -50,6 +50,7 @@ def _user_response_payload(user: User):
         "email": user.email,
         "name": user.name,
         "profile_picture_url": profile_picture_url,
+        "email_verified": bool(getattr(user, "email_verified", True)),
         "created_at": user.created_at,
     }
 

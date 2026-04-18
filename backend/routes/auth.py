@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from datetime import timedelta, datetime
+import asyncio
 import hashlib
 import sys
 import os
@@ -9,75 +10,222 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import get_db
 from models.user import User
-from schemas.auth import UserCreate, UserLogin, UserResponse, Token
+from schemas.auth import (
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    Token,
+    RegisterResponse,
+    VerifyEmailResponse,
+)
 from utils.auth import (
     get_password_hash,
     verify_password,
     create_access_token,
     get_current_user,
+    decode_token,
+    create_email_verification_token,
+    EMAIL_VERIFY_TYP,
 )
-from config import ACCESS_TOKEN_EXPIRE_MINUTES
+from config import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    EMAIL_VERIFICATION_DISABLED,
+    REGISTRATION_VERIFY_EXPIRE_HOURS,
+    smtp_configured,
+)
+from services.email_service import registration_verify_url, send_registration_verification_email
 
 router = APIRouter()
-
-
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new teacher account."""
-    # Check if email already exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Create new user
-    hashed_password = get_password_hash(user_data.password)
-    new_user = User(
-        email=user_data.email,
-        password=hashed_password,
-        name=user_data.name
-    )
-    
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    return new_user
-
-
-@router.post("/login", response_model=Token)
-async def login(user_data: UserLogin, db: Session = Depends(get_db)):
-    """Login with email and password, returns JWT token."""
-    # Find user by email
-    user = db.query(User).filter(User.email == user_data.email).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
-    
-    # Verify password
-    if not verify_password(user_data.password, user.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
-    
-    # Create access token
-    access_token = create_access_token(
-        data={"sub": user.id},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    return {"access_token": access_token, "token_type": "bearer"}
 
 
 def _picture_cache_version(user: User):
     if user.profile_picture:
         return hashlib.sha1(user.profile_picture).hexdigest()[:16]
     return None
+
+
+def _user_to_response(user: User) -> UserResponse:
+    picture_version = _picture_cache_version(user)
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        profile_picture_url=(
+            f"/api/account/profile-picture/{user.id}?v={picture_version}"
+            if picture_version
+            else None
+        ),
+        email_verified=bool(getattr(user, "email_verified", True)),
+        created_at=user.created_at,
+    )
+
+
+def _send_verification_email_task(to_email: str, name, verify_jwt: str) -> None:
+    verify_url = registration_verify_url(verify_jwt)
+    send_registration_verification_email(
+        to_email,
+        name,
+        verify_url,
+        REGISTRATION_VERIFY_EXPIRE_HOURS,
+    )
+
+
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    """Create user with email_verified=False and send link, unless verification is disabled."""
+    existing = db.query(User).filter(User.email == user_data.email).first()
+
+    if existing and existing.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
+
+    if EMAIL_VERIFICATION_DISABLED:
+        hashed_password = get_password_hash(user_data.password)
+        if existing:
+            existing.password = hashed_password
+            existing.name = user_data.name
+            existing.email_verified = True
+            db.commit()
+            db.refresh(existing)
+            user_out = existing
+        else:
+            user_out = User(
+                email=user_data.email,
+                password=hashed_password,
+                name=user_data.name,
+                email_verified=True,
+            )
+            db.add(user_out)
+            db.commit()
+            db.refresh(user_out)
+        access_token = create_access_token(
+            data={"sub": user_out.id},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
+        return RegisterResponse(
+            message="Account created.",
+            email=user_out.email,
+            user=_user_to_response(user_out),
+            access_token=access_token,
+        )
+
+    if not smtp_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email verification is not configured on this server. Set SMTP_USER and SMTP_PASSWORD, or enable EMAIL_VERIFICATION_DISABLED for local development only.",
+        )
+
+    hashed_password = get_password_hash(user_data.password)
+    if existing:
+        existing.password = hashed_password
+        existing.name = user_data.name
+        db.commit()
+        db.refresh(existing)
+        user_out = existing
+    else:
+        user_out = User(
+            email=user_data.email,
+            password=hashed_password,
+            name=user_data.name,
+            email_verified=False,
+        )
+        db.add(user_out)
+        db.commit()
+        db.refresh(user_out)
+
+    verify_jwt = create_email_verification_token(user_out.id, user_out.email)
+    await asyncio.to_thread(
+        _send_verification_email_task,
+        user_data.email,
+        user_data.name,
+        verify_jwt,
+    )
+
+    return RegisterResponse(
+        message="Check your email to verify your address and complete registration.",
+        email=user_data.email,
+    )
+
+
+@router.get("/verify-email", response_model=VerifyEmailResponse)
+async def verify_email(
+    token: str = Query(..., min_length=20, max_length=8192),
+    db: Session = Depends(get_db),
+):
+    """Mark email_verified from signed JWT (idempotent if already verified)."""
+    payload = decode_token(token.strip())
+    if not payload or payload.get("typ") != EMAIL_VERIFY_TYP:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification link",
+        )
+
+    user_id = payload.get("sub")
+    claim_email = payload.get("email")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification link",
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification link",
+        )
+
+    if claim_email and user.email.lower() != str(claim_email).lower():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification link",
+        )
+
+    if user.email_verified:
+        return VerifyEmailResponse(
+            message="Your email is verified. You can sign in.",
+            email=user.email,
+        )
+
+    user.email_verified = True
+    db.commit()
+
+    return VerifyEmailResponse(
+        message="Your email is verified. You can sign in.",
+        email=user.email,
+    )
+
+
+@router.post("/login", response_model=Token)
+async def login(user_data: UserLogin, db: Session = Depends(get_db)):
+    """Login with email and password, returns JWT token."""
+    user = db.query(User).filter(User.email == user_data.email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    if not verify_password(user_data.password, user.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
+    if not getattr(user, "email_verified", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before signing in.",
+        )
+
+    access_token = create_access_token(
+        data={"sub": user.id},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.get("/me", response_model=UserResponse)
@@ -93,5 +241,6 @@ async def get_me(current_user: User = Depends(get_current_user)):
             if picture_version
             else None
         ),
+        "email_verified": bool(getattr(current_user, "email_verified", True)),
         "created_at": current_user.created_at,
     }

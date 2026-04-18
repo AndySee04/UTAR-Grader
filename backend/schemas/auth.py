@@ -19,6 +19,7 @@ class UserResponse(BaseModel):
     email: str
     name: Optional[str]
     profile_picture_url: Optional[str] = None
+    email_verified: bool = True
     created_at: datetime
 
     class Config:
@@ -45,3 +46,17 @@ class UserUpdate(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class RegisterResponse(BaseModel):
+    """Normal signup: only message + email until verified. Dev bypass may include user + token."""
+
+    message: str
+    email: EmailStr
+    user: Optional[UserResponse] = None
+    access_token: Optional[str] = None
+
+
+class VerifyEmailResponse(BaseModel):
+    message: str
+    email: EmailStr

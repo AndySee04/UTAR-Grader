@@ -50,14 +50,17 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Frontend: Login page
 - [x] Frontend: Registration page
 - [x] Frontend: Auth context/state management
+- [x] Email verification at registration (`users.email_verified`, JWT link; idempotent verify; grading-style email template)
 
 ### Files Created:
 
 - [x] `backend/utils/auth.py` - Password hashing, JWT utilities
 - [x] `backend/routes/auth.py` - Auth endpoints
 - [x] `backend/schemas/auth.py` - Pydantic schemas for auth
+- [x] `users.email_verified` — verification state on user row; signed JWT verify links (no pending table)
 - [x] `frontend/src/pages/Login.jsx`
 - [x] `frontend/src/pages/Register.jsx`
+- [x] `frontend/src/pages/VerifyEmail.jsx`
 - [x] `frontend/src/services/api.js`
 - [x] `frontend/src/context/AuthContext.jsx`
 
@@ -436,7 +439,7 @@ These endpoints were removed from the backend as unused by the current web clien
 ## Current Progress
 
 **Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
-**Last Updated**: 2026-04-17
+**Last Updated**: 2026-04-18
 
 ### Priority TODOs
 

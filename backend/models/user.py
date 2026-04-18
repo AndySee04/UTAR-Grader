@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, LargeBinary
+from sqlalchemy import Column, String, DateTime, LargeBinary, Boolean
 from sqlalchemy.dialects.sqlite import CHAR
 from sqlalchemy.orm import relationship
 from database import Base
@@ -14,6 +14,7 @@ class User(Base):
     password = Column(String(255), nullable=False)
     name = Column(String(255))
     profile_picture = Column(LargeBinary, nullable=True)
+    email_verified = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     exams = relationship("Exam", back_populates="user", cascade="all, delete-orphan")

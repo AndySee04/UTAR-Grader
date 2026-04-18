@@ -8,6 +8,7 @@ import ExamList from './pages/ExamList'
 import ExamResults from './pages/ExamResults'
 import ManageAccount from './pages/ManageAccount'
 import CaptureSession from './pages/CaptureSession'
+import VerifyEmail from './pages/VerifyEmail'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -34,6 +35,7 @@ function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/capture/:sessionId" element={<CaptureSession />} />
       <Route path="/" element={
         <ProtectedRoute>

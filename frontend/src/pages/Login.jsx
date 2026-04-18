@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -20,12 +20,25 @@ function Login() {
   const toast = useToast()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const verifiedToastShown = useRef(false)
 
   useEffect(() => {
     if (authLoading) return
     const next = sanitizeNext(searchParams.get('next'))
     if (user && next) navigate(next, { replace: true })
   }, [authLoading, user, searchParams, navigate])
+
+  useEffect(() => {
+    if (verifiedToastShown.current) return
+    if (searchParams.get('verified') !== '1') return
+    verifiedToastShown.current = true
+    toast.success('Email verified. You can sign in.')
+    const next = sanitizeNext(searchParams.get('next'))
+    const sp = new URLSearchParams()
+    if (next) sp.set('next', next)
+    const q = sp.toString()
+    navigate(q ? `/login?${q}` : '/login', { replace: true })
+  }, [searchParams, navigate, toast])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
