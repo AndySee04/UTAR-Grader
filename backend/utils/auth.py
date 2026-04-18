@@ -15,11 +15,13 @@ from config import (
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REGISTRATION_VERIFY_EXPIRE_HOURS,
+    PASSWORD_RESET_EXPIRE_HOURS,
 )
 from database import get_db
 from models.user import User
 
 EMAIL_VERIFY_TYP = "email_verify"
+PASSWORD_RESET_TYP = "password_reset"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
@@ -38,6 +40,14 @@ def create_email_verification_token(user_id: str, email: str) -> str:
     return create_access_token(
         data={"sub": user_id, "email": email, "typ": EMAIL_VERIFY_TYP},
         expires_delta=timedelta(hours=REGISTRATION_VERIFY_EXPIRE_HOURS),
+    )
+
+
+def create_password_reset_token(user_id: str, email: str) -> str:
+    """Signed JWT for /reset-password links."""
+    return create_access_token(
+        data={"sub": user_id, "email": email, "typ": PASSWORD_RESET_TYP},
+        expires_delta=timedelta(hours=PASSWORD_RESET_EXPIRE_HOURS),
     )
 
 

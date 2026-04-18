@@ -60,3 +60,12 @@ class RegisterResponse(BaseModel):
 class VerifyEmailResponse(BaseModel):
     message: str
     email: EmailStr
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=20, max_length=8192)
+    new_password: str = Field(..., min_length=6, max_length=100)

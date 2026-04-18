@@ -51,6 +51,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] Frontend: Registration page
 - [x] Frontend: Auth context/state management
 - [x] Email verification at registration (`users.email_verified`, JWT link; idempotent verify; grading-style email template)
+- [x] Forgot / reset password (`POST /auth/forgot-password`, `POST /auth/reset-password`; JWT; email matches verification layout)
 
 ### Files Created:
 
@@ -61,6 +62,8 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 - [x] `frontend/src/pages/Login.jsx`
 - [x] `frontend/src/pages/Register.jsx`
 - [x] `frontend/src/pages/VerifyEmail.jsx`
+- [x] `frontend/src/pages/ForgotPassword.jsx`
+- [x] `frontend/src/pages/ResetPassword.jsx`
 - [x] `frontend/src/services/api.js`
 - [x] `frontend/src/context/AuthContext.jsx`
 

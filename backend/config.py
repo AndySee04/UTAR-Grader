@@ -95,6 +95,7 @@ FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").stri
 
 # Registration: pending row expires after this many hours (email verification link).
 REGISTRATION_VERIFY_EXPIRE_HOURS = _env_int("REGISTRATION_VERIFY_EXPIRE_HOURS", 24)
+PASSWORD_RESET_EXPIRE_HOURS = _env_int("PASSWORD_RESET_EXPIRE_HOURS", 1)
 # Dev only: create users immediately without sending verification email (insecure; do not use in production).
 EMAIL_VERIFICATION_DISABLED = os.getenv("EMAIL_VERIFICATION_DISABLED", "").strip().lower() in {
     "1",

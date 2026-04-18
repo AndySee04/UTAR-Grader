@@ -47,6 +47,8 @@ export const authAPI = {
   register: (data) => api.post("/auth/register", data),
   verifyEmail: (token) =>
     api.get("/auth/verify-email", { params: { token } }),
+  forgotPassword: (data) => api.post("/auth/forgot-password", data),
+  resetPassword: (data) => api.post("/auth/reset-password", data),
   login: (data) => api.post("/auth/login", data),
   getMe: () => api.get("/auth/me"),
 };

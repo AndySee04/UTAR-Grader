@@ -17,6 +17,9 @@ from schemas.auth import (
     Token,
     RegisterResponse,
     VerifyEmailResponse,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    MessageResponse,
 )
 from utils.auth import (
     get_password_hash,
@@ -25,15 +28,23 @@ from utils.auth import (
     get_current_user,
     decode_token,
     create_email_verification_token,
+    create_password_reset_token,
     EMAIL_VERIFY_TYP,
+    PASSWORD_RESET_TYP,
 )
 from config import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     EMAIL_VERIFICATION_DISABLED,
     REGISTRATION_VERIFY_EXPIRE_HOURS,
+    PASSWORD_RESET_EXPIRE_HOURS,
     smtp_configured,
 )
-from services.email_service import registration_verify_url, send_registration_verification_email
+from services.email_service import (
+    registration_verify_url,
+    send_registration_verification_email,
+    password_reset_url,
+    send_password_reset_email,
+)
 
 router = APIRouter()
 
@@ -226,6 +237,66 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     )
 
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+_FORGOT_PASSWORD_MSG = "If an account exists for that email, we sent password reset instructions."
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Send password reset email (same generic response whether or not the email exists)."""
+    if not smtp_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Password reset email is not configured on this server. Set SMTP_USER and SMTP_PASSWORD.",
+        )
+    user = db.query(User).filter(User.email == body.email).first()
+    if not user or not getattr(user, "email_verified", True):
+        return MessageResponse(message=_FORGOT_PASSWORD_MSG)
+
+    reset_jwt = create_password_reset_token(user.id, user.email)
+    url = password_reset_url(reset_jwt)
+    await asyncio.to_thread(
+        send_password_reset_email,
+        user.email,
+        user.name,
+        url,
+        PASSWORD_RESET_EXPIRE_HOURS,
+    )
+    return MessageResponse(message=_FORGOT_PASSWORD_MSG)
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Set a new password using the signed token from the reset email."""
+    payload = decode_token(body.token.strip())
+    if not payload or payload.get("typ") != PASSWORD_RESET_TYP:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link",
+        )
+    user_id = payload.get("sub")
+    claim_email = payload.get("email")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link",
+        )
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link",
+        )
+    if claim_email and user.email.lower() != str(claim_email).lower():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link",
+        )
+
+    user.password = get_password_hash(body.new_password)
+    db.commit()
+    return MessageResponse(message="Your password has been updated. You can sign in.")
 
 
 @router.get("/me", response_model=UserResponse)

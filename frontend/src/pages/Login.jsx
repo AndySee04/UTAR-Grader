@@ -135,6 +135,15 @@ function Login() {
                 </>
               ) : 'Sign in'}
             </button>
+
+            <div className="text-right">
+              <Link
+                to="/forgot-password"
+                className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
+              >
+                Forgot password?
+              </Link>
+            </div>
           </form>
 
           <div className="mt-6 text-center">
