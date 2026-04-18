@@ -32,6 +32,10 @@ class DocumentListResponse(BaseModel):
         from_attributes = True
 
 
+class DocumentRenameRequest(BaseModel):
+    file_name: str = Field(..., min_length=1, max_length=255)
+
+
 class PageImageResponse(BaseModel):
     page_number: int
     image_url: str

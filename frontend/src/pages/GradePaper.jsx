@@ -14,6 +14,27 @@ const MIN_CROP_WIDTH_PX = 20
 const MIN_CROP_HEIGHT_PX = 20
 const MIN_CROP_AREA_PX = 1000
 
+/** `.pdf` or `.zip` from stored display name; defaults to `.pdf`. */
+function getStudentAnswerExtension(doc) {
+  const n = (doc.file_name || '').trim()
+  const m = n.match(/(\.[a-zA-Z0-9]+)$/i)
+  if (m && ['.pdf', '.zip'].includes(m[1].toLowerCase())) return m[1].toLowerCase()
+  return '.pdf'
+}
+
+function getStudentAnswerBaseName(doc) {
+  const n = (doc.file_name || '').trim()
+  const ext = getStudentAnswerExtension(doc)
+  if (n.toLowerCase().endsWith(ext)) return n.slice(0, -ext.length).trim()
+  return n.replace(/\.(pdf|zip)$/i, '').trim()
+}
+
+function sanitizeStudentBaseInput(value) {
+  return String(value ?? '')
+    .replace(/[/\\]/g, '')
+    .replace(/\.(pdf|zip)$/i, '')
+}
+
 function StepIcon({ name, className = 'w-5 h-5' }) {
   const baseProps = {
     className,
@@ -111,6 +132,8 @@ function GradePaper() {
   const [processingNewCrop, setProcessingNewCrop] = useState(false)
   const editFocusRef = useRef({ id: null, value: null })
   const addStudentInputRef = useRef(null)
+  const [studentFileNameDraft, setStudentFileNameDraft] = useState({})
+  const [editingStudentFileDocId, setEditingStudentFileDocId] = useState(null)
 
   // Region count per document (synced with backend); cropped = count > 0
   const [regionCountByDocId, setRegionCountByDocId] = useState({})
@@ -917,6 +940,53 @@ function GradePaper() {
     return () => stopProcessingPoll()
   }, [examId])
 
+  const handleSaveStudentFileName = async (doc) => {
+    const ext = getStudentAnswerExtension(doc)
+    const baseRaw =
+      studentFileNameDraft[doc.id] !== undefined
+        ? studentFileNameDraft[doc.id]
+        : getStudentAnswerBaseName(doc)
+    const base = sanitizeStudentBaseInput(baseRaw).trim()
+    if (!base) {
+      toast.error('Enter a file name')
+      return
+    }
+    const nextName = `${base}${ext}`
+    try {
+      const res = await documentsAPI.rename(doc.id, nextName)
+      const updated = res.data?.file_name ?? nextName
+      setUploadedDocs((prev) => ({
+        ...prev,
+        students: (prev.students || []).map((s) =>
+          s.id === doc.id ? { ...s, file_name: updated } : s
+        ),
+      }))
+      setStudentFileNameDraft((d) => {
+        const copy = { ...d }
+        delete copy[doc.id]
+        return copy
+      })
+      setEditingStudentFileDocId(null)
+      toast.success('File name updated')
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to rename file')
+    }
+  }
+
+  const startEditStudentFileName = (doc) => {
+    setEditingStudentFileDocId(doc.id)
+    setStudentFileNameDraft({ [doc.id]: getStudentAnswerBaseName(doc) })
+  }
+
+  const cancelEditStudentFileName = (docId) => {
+    setEditingStudentFileDocId(null)
+    setStudentFileNameDraft((d) => {
+      const copy = { ...d }
+      delete copy[docId]
+      return copy
+    })
+  }
+
   // --- Regions View ---
   const handleViewRegions = async (docId, docType = 'student_answer') => {
     setSelectedDocId(docId)
@@ -1543,16 +1613,107 @@ function GradePaper() {
                             handleViewRegions(doc.id)
                           }
                         }}
-                        className="relative text-left p-3 rounded-xl border border-gray-200 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/30 transition-all group flex items-center justify-between cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
+                        className="relative text-left p-3 rounded-xl border border-gray-200 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/30 transition-all group flex flex-col gap-2 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
                       >
+                        <div
+                          className="min-w-0"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          {editingStudentFileDocId === doc.id ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex min-w-[12rem] flex-1 rounded-md border border-gray-300 dark:border-slate-500 bg-white dark:bg-slate-950/90 overflow-hidden shadow-inner dark:shadow-none">
+                                <input
+                                  type="text"
+                                  value={
+                                    studentFileNameDraft[doc.id] !== undefined
+                                      ? studentFileNameDraft[doc.id]
+                                      : getStudentAnswerBaseName(doc)
+                                  }
+                                  onChange={(e) =>
+                                    setStudentFileNameDraft((prev) => ({
+                                      ...prev,
+                                      [doc.id]: sanitizeStudentBaseInput(e.target.value),
+                                    }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault()
+                                      handleSaveStudentFileName(doc)
+                                    } else if (e.key === 'Escape') {
+                                      e.preventDefault()
+                                      cancelEditStudentFileName(doc.id)
+                                    }
+                                  }}
+                                  placeholder="Student name"
+                                  autoComplete="off"
+                                  spellCheck={false}
+                                  autoFocus
+                                  className="min-w-0 flex-1 px-2.5 py-1.5 text-sm font-semibold border-0 bg-transparent text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:ring-0 focus:outline-none"
+                                />
+                                <span
+                                  className="inline-flex items-center px-2.5 py-1.5 text-sm font-semibold tabular-nums text-gray-500 dark:text-slate-400 bg-gray-50 dark:bg-slate-900 border-l border-gray-200 dark:border-slate-600 shrink-0 select-none"
+                                  aria-hidden
+                                >
+                                  {getStudentAnswerExtension(doc)}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="px-2.5 py-1.5 text-xs font-semibold rounded-md border border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+                                onClick={() => handleSaveStudentFileName(doc)}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="px-2.5 py-1.5 text-xs font-semibold rounded-md border border-gray-300 dark:border-slate-400 text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+                                onClick={() => cancelEditStudentFileName(doc.id)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 min-w-0 pr-7">
+                              <div className="flex items-baseline gap-0 min-w-0 flex-1">
+                                <span className="text-base font-semibold text-gray-900 dark:text-white truncate">
+                                  {getStudentAnswerBaseName(doc) || 'Student'}
+                                </span>
+                                <span className="text-base font-semibold text-gray-500 dark:text-slate-400 shrink-0">
+                                  {getStudentAnswerExtension(doc)}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="p-1 -m-1 rounded-md text-gray-900 dark:text-white hover:bg-gray-100/90 dark:hover:bg-white/10 transition-colors flex-shrink-0"
+                                title="Rename file"
+                                aria-label={`Rename file ${doc.file_name || doc.id}`}
+                                onClick={() => startEditStudentFileName(doc)}
+                              >
+                                <svg
+                                  className="w-[1.1em] h-[1.1em] block"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  aria-hidden
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2.25}
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 8.586-8.586z"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 overflow-hidden pr-6">
                           <svg className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-gray-700 dark:text-slate-300 truncate">
-                              {doc.file_name || 'Student Document'}
-                            </span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-[11px] text-gray-500 dark:text-slate-400">Tap card to crop regions</span>
                             <span className={`text-[11px] font-medium ${
                               croppedDocs.has(doc.id) ? 'text-emerald-600' : 'text-amber-600'
                             }`}>

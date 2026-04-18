@@ -86,6 +86,8 @@ export const documentsAPI = {
   saveCrop: (docId, payload) => api.post(`/${docId}/crop`, payload),
   saveRegionsOrder: (docId, regionIds) =>
     api.put(`/${docId}/regions/order`, { region_ids: regionIds }),
+  rename: (docId, fileName) =>
+    api.patch(`/${docId}`, { file_name: fileName }),
   delete: (id) => api.delete(`/${id}`),
 };
 
@@ -112,10 +114,13 @@ export const captureAPI = {
   },
   deletePage: (sessionId, pageId, token) =>
     api.delete(`/capture-sessions/${sessionId}/pages/${pageId}`, { params: { token } }),
-  finalizeSession: (sessionId, token, pageIds = []) =>
+  finalizeSession: (sessionId, token, pageIds = [], fileName = null) =>
     api.post(`/capture-sessions/${sessionId}/finalize`, {
       token,
       page_ids: pageIds,
+      ...(fileName != null && String(fileName).trim() !== ""
+        ? { file_name: String(fileName).trim() }
+        : {}),
     }),
   continueSession: (sessionId, token) =>
     api.post(`/capture-sessions/${sessionId}/continue`, {

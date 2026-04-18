@@ -303,16 +303,29 @@ function ExamList() {
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 min-w-0">
-                        <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100 truncate">
+                        <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">
                           {exam.name}
                         </h2>
                         <button
+                          type="button"
                           onClick={(e) => { e.stopPropagation(); startRename(exam) }}
-                          className="p-1 text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors flex-shrink-0"
+                          className="p-1 -m-1 rounded-md text-gray-900 dark:text-white hover:bg-gray-100/90 dark:hover:bg-white/10 transition-colors flex-shrink-0"
                           title="Rename exam"
+                          aria-label={`Rename exam ${exam.name}`}
                         >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 8.586-8.586z" />
+                          <svg
+                            className="w-[1.1em] h-[1.1em] block"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            aria-hidden
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2.25}
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 8.586-8.586z"
+                            />
                           </svg>
                         </button>
                       </div>

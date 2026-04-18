@@ -351,6 +351,7 @@ The **Task / when used** column ties each route to a **concrete action** in the 
 | POST | `/api/exams/{exam_id}/upload-multiple` | **Upload many student PDFs** — batch student answer uploads. |
 | GET | `/api/exams/{exam_id}/documents` | **List documents** — show uploaded files per type (`question_paper`, `answer_scheme`, `student_answer`). |
 | DELETE | `/api/{document_id}` | **Remove a document** — delete one uploaded PDF from the exam. |
+| PATCH | `/api/{document_id}` | **Rename student answer** — update display `file_name` (`.pdf` or `.zip` to match upload) on Process Documents step. |
 | POST | `/api/{document_id}/crop` | **Save a crop** — after drawing a region on a page, store its bounding box (manual crop; no auto-detect in UI). |
 | GET | `/api/{document_id}/regions` | **List regions** — load all saved crops/OCR regions for that document (cropping UI, rebuild marking guide from question regions). |
 | PUT | `/api/{document_id}/regions/order` | **Reorder regions** — persist order of answer regions (e.g. per page). |
@@ -361,7 +362,7 @@ The **Task / when used** column ties each route to a **concrete action** in the 
 | POST | `/api/capture-sessions/{session_id}/pages` | **Public: upload page** — phone posts a new photo/PDF page (`token` in form). |
 | GET | `/api/capture-sessions/{session_id}/pages/{page_id}/image` | **View page image** — preview thumbnail/full image for a captured page. |
 | DELETE | `/api/capture-sessions/{session_id}/pages/{page_id}` | **Delete a page** — retake/remove one page from the session. |
-| POST | `/api/capture-sessions/{session_id}/finalize` | **Finalize capture** — merge pages into a student PDF document on the server. |
+| POST | `/api/capture-sessions/{session_id}/finalize` | **Finalize capture** — merge pages into a PDF on the server; body includes `token`, `page_ids`, and for **student_answer** sessions a required `file_name` (student name / display file name). |
 | POST | `/api/capture-sessions/{session_id}/continue` | **Continue** — move to “next student” capture while keeping the same exam (multi-student flow). |
 | POST | `/api/capture-sessions/{session_id}/exit` | **Exit session** — end phone capture without finalizing (cleanup signal). |
 

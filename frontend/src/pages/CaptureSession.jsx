@@ -24,6 +24,8 @@ function CaptureSession() {
   const [continuing, setContinuing] = useState(false)
   const [exiting, setExiting] = useState(false)
   const [focusMarker, setFocusMarker] = useState(null)
+  const [finalizeStudentName, setFinalizeStudentName] = useState('')
+  const [showFinalizeNameModal, setShowFinalizeNameModal] = useState(false)
 
   const pageCountLabel = useMemo(() => `${pages.length} page${pages.length === 1 ? '' : 's'}`, [pages.length])
 
@@ -279,20 +281,33 @@ function CaptureSession() {
     }
   }
 
-  const handleFinalizeCapture = async () => {
+  const handleFinalizeCapture = async (opts = {}) => {
+    const { fileName: fileNameOpt } = opts
     if (!sessionId || !token || pages.length === 0 || finalizing) return
+    const isStudent = (session?.doc_type || '') === 'student_answer'
+    const nameForPdf = (fileNameOpt ?? finalizeStudentName).trim()
+    if (isStudent && !nameForPdf) {
+      setError('Enter the student name (used as the PDF file name).')
+      return
+    }
     setFinalizing(true)
     setCaptureStatus('Processing photos on laptop/server...')
     setError('')
     try {
       setCaptureStatus('Generating final PDF on server...')
+      const payload = {
+        token,
+        page_ids: pages.map((p) => p.id)
+      }
+      if (isStudent) {
+        payload.file_name = nameForPdf
+      } else if (nameForPdf) {
+        payload.file_name = nameForPdf
+      }
       const finalizeResp = await fetch(`/api/capture-sessions/${sessionId}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          page_ids: pages.map((p) => p.id)
-        })
+        body: JSON.stringify(payload)
       })
       if (!finalizeResp.ok) {
         let detail = 'Failed to finalize capture'
@@ -304,6 +319,7 @@ function CaptureSession() {
         }
         throw new Error(detail)
       }
+      setShowFinalizeNameModal(false)
       setCompleted(true)
       setSession((prev) => ({ ...(prev || {}), status: 'completed' }))
       setCaptureStatus('Done. PDF uploaded successfully.')
@@ -320,6 +336,26 @@ function CaptureSession() {
     } finally {
       setFinalizing(false)
     }
+  }
+
+  const openFinalizeFlow = () => {
+    if (!sessionId || !token || pages.length === 0 || finalizing) return
+    setError('')
+    if ((session?.doc_type || '') === 'student_answer') {
+      setFinalizeStudentName('')
+      setShowFinalizeNameModal(true)
+    } else {
+      handleFinalizeCapture({ fileName: '' })
+    }
+  }
+
+  const confirmFinalizeWithName = () => {
+    const name = finalizeStudentName.trim()
+    if (!name) {
+      setError('Enter the student name (used as the PDF file name).')
+      return
+    }
+    handleFinalizeCapture({ fileName: name })
   }
 
   if (loading) {
@@ -497,7 +533,7 @@ function CaptureSession() {
           <div className="mt-4">
             <button
               type="button"
-              onClick={handleFinalizeCapture}
+              onClick={openFinalizeFlow}
               disabled={pages.length === 0 || finalizing}
               className="btn-secondary w-full"
             >
@@ -574,6 +610,57 @@ function CaptureSession() {
                 disabled={activePageIndex < 0 || activePageIndex >= pages.length - 1}
               >
                 →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFinalizeNameModal && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div
+            className="w-full max-w-md bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-700 p-4 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finalize-name-title"
+          >
+            <h3 id="finalize-name-title" className="text-base font-semibold text-gray-900 dark:text-slate-100">
+              Student name
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-slate-400">
+              Enter the student&apos;s name. It will be used as the PDF file name on your computer.
+            </p>
+            <input
+              type="text"
+              value={finalizeStudentName}
+              onChange={(e) => setFinalizeStudentName(e.target.value)}
+              placeholder="e.g. Tan Ah Kow"
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
+              autoFocus
+            />
+            {error && (
+              <p className="text-sm text-red-600">{error}</p>
+            )}
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={finalizing}
+                onClick={() => {
+                  setShowFinalizeNameModal(false)
+                  setError('')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={finalizing}
+                onClick={confirmFinalizeWithName}
+              >
+                {finalizing ? 'Uploading…' : 'Upload PDF'}
               </button>
             </div>
           </div>

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional, Dict, Tuple
 import io
+import re
 import uuid
 import os
 import sys
@@ -33,7 +34,13 @@ from models.extracted_text import ExtractedText
 from models.student_answer import StudentAnswer
 from models.grade import Grade
 from models.llm_response import LLMResponse
-from schemas.document import DocumentResponse, DocumentListResponse, CropRegion, CropRegionResponse
+from schemas.document import (
+    DocumentResponse,
+    DocumentListResponse,
+    DocumentRenameRequest,
+    CropRegion,
+    CropRegionResponse,
+)
 from utils.auth import get_current_user
 from config import UPLOAD_DIR, MAX_FILE_SIZE, ALLOWED_EXTENSIONS, FRONTEND_BASE_URL
 
@@ -46,6 +53,29 @@ MIN_CROP_HEIGHT_PX = 20
 MIN_CROP_AREA_PX = 1200
 
 
+def _sanitize_document_display_name(raw: str, default_ext: str = ".pdf") -> str:
+    """Safe display/file name for stored document.file_name (basename, no path traversal)."""
+    s = (raw or "").strip()
+    if not s:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File name cannot be empty.",
+        )
+    s = os.path.basename(s.replace("\\", "/"))
+    s = re.sub(r'[<>:"|?*\x00-\x1f]', "", s).strip()
+    if not s:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File name contains no valid characters.",
+        )
+    root, ext = os.path.splitext(s)
+    ext_l = (ext or "").lower()
+    if ext_l not in (".pdf", ".zip"):
+        ext = default_ext if default_ext in (".pdf", ".zip") else ".pdf"
+    name = f"{root}{ext}" if root else f"document{ext}"
+    return name[:255]
+
+
 class CaptureSessionCreateRequest(BaseModel):
     doc_type: str
     frontend_base_url: Optional[str] = None
@@ -54,6 +84,8 @@ class CaptureSessionCreateRequest(BaseModel):
 class CaptureSessionFinalizeRequest(BaseModel):
     token: str
     page_ids: Optional[List[str]] = None
+    # Display file name; required when doc_type is student_answer (student name).
+    file_name: Optional[str] = None
 
 
 class CaptureSessionContinueRequest(BaseModel):
@@ -922,7 +954,21 @@ async def finalize_capture_session(
     if not content:
         raise HTTPException(status_code=500, detail="Failed to generate PDF from captured pages.")
 
-    file_name = f"{session['doc_type']}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    doc_type = session.get("doc_type") or ""
+    if doc_type == "student_answer":
+        label = (body.file_name or "").strip()
+        if not label:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Student name (file name) is required before uploading the PDF.",
+            )
+        file_name = _sanitize_document_display_name(label, ".pdf")
+    else:
+        label = (body.file_name or "").strip()
+        if label:
+            file_name = _sanitize_document_display_name(label, ".pdf")
+        else:
+            file_name = f"{doc_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
     document = _save_document_bytes(
         exam_id=session["exam_id"],
         doc_type=session["doc_type"],
@@ -1045,6 +1091,36 @@ async def list_documents(
     
     documents = query.order_by(Document.uploaded_at.desc()).all()
     return documents
+
+
+@router.patch("/{document_id}", response_model=DocumentListResponse)
+async def rename_document(
+    document_id: str,
+    body: DocumentRenameRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update display file name for a student answer document (Process Documents step)."""
+    document = db.query(Document).join(Exam).filter(
+        Document.id == document_id,
+        Exam.user_id == current_user.id,
+    ).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+    if document.doc_type != "student_answer":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only student answer documents can be renamed.",
+        )
+    _, ext_on_disk = os.path.splitext(document.file_path or "")
+    default_ext = ext_on_disk.lower() if ext_on_disk.lower() in (".pdf", ".zip") else ".pdf"
+    document.file_name = _sanitize_document_display_name(body.file_name, default_ext)
+    db.commit()
+    db.refresh(document)
+    return document
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
