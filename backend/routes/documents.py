@@ -393,9 +393,10 @@ def _warp_document_quad_bgr(bgr_img):
 
 def _server_scan_capture_image(image: Image.Image) -> Tuple[Image.Image, bool, str]:
     """
-    Server-side document detection/straighten+crop on laptop.
-    Returns (image, success_flag, note).
+    Straightning + Cropping document image on server side.
     """
+    
+    # Normalize captured image to fix orientation and convert to RGB format.
     normalized = _normalize_capture_image(image)
     if cv2 is None or np is None:
         return normalized, False, "opencv-unavailable"
@@ -403,18 +404,18 @@ def _server_scan_capture_image(image: Image.Image) -> Tuple[Image.Image, bool, s
     try:
         rgb = np.array(normalized)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        # Reference flow: contour-driven perspective first, then fine deskew + crop.
+        # Warping the document quadrangle and deskewing the image.
         warped, contour_found = _warp_document_quad_bgr(bgr)
         deskewed = _deskew_bgr_image(warped)
         cropped = _crop_foreground_bgr(deskewed)
         src_area = float(max(1, bgr.shape[0] * bgr.shape[1]))
         crop_area = float(max(1, cropped.shape[0] * cropped.shape[1]))
-        # Require meaningful crop reduction; tiny edge trims should not be "success".
+        # Calculating the crop reduction percentage.
         crop_reduction = 1.0 - (crop_area / src_area)
         transformed = bool(crop_reduction >= 0.05 or warped.shape[:2] != bgr.shape[:2])
         # If largest contour is not found, force fallback (red border).
         processed_success = bool(contour_found and transformed)
-        final_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+        final_rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB) # Converting the cropped image to RGB format.
         if not contour_found:
             note = "fallback-no-contour"
         else:
