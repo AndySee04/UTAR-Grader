@@ -205,8 +205,7 @@ def _order_quad_points(points):
 
 def _biggest_document_quad(contours):
     """
-    Reference-style biggest 4-corner contour selection.
-    Mirrors user's OpenCV approach.
+    Selecting the biggest 4-corner contour.
     """
     biggest = np.array([])
     max_area = 0
@@ -802,14 +801,19 @@ async def upload_capture_session_page(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image upload.")
 
+    # Creating the page directory.
     pages = session.get("pages") or []
     page_id = str(uuid.uuid4())
     page_index = len(pages) + 1
     page_dir = _capture_session_dir(session["exam_id"], session_id)
     page_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Creating the paths for the source, processed and preview images.
     source_path = page_dir / f"{page_index:03d}_{page_id}_source.png"
     processed_path = page_dir / f"{page_index:03d}_{page_id}_processed.png"
     preview_path = page_dir / f"{page_index:03d}_{page_id}_preview.jpg"
+   
+    # Saving the source, processed and preview images.
     normalized.save(source_path, format="PNG", optimize=True)
     processed.save(processed_path, format="PNG", optimize=True)
     processed.save(preview_path, format="JPEG", quality=78, optimize=True, progressive=True)
