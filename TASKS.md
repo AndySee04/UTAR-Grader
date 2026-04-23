@@ -486,6 +486,7 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Require full name during registration (frontend + backend validation)
 - [x] Use direct `name.trim()` checks (no temporary name variable)
 - [x] Add explicit invalid-email handling in auth forms (register/login/forgot password)
+- [x] Capture session uploads now send PNG frames from phone client
 
 ### Next Steps
 

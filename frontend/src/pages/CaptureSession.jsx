@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 
-const CAPTURE_JPEG_QUALITY = 0.9
 const MAX_CAPTURE_SIDE = 1600
 
 function CaptureSession() {
@@ -195,7 +194,7 @@ function CaptureSession() {
         canvas.toBlob((result) => {
           if (result) resolve(result)
           else reject(new Error('Failed to capture image frame'))
-        }, 'image/jpeg', CAPTURE_JPEG_QUALITY)
+        }, 'image/png')
       })
       if (!blob || blob.size <= 0) {
         throw new Error('Captured image blob is empty')
@@ -203,7 +202,7 @@ function CaptureSession() {
       setCaptureStatus('Uploading page...')
       const formData = new FormData()
       formData.append('token', token)
-      formData.append('file', blob, `capture_${Date.now()}.jpg`)
+      formData.append('file', blob, `capture_${Date.now()}.png`)
       const uploadResp = await fetch(`/api/capture-sessions/${sessionId}/pages`, {
         method: 'POST',
         body: formData
