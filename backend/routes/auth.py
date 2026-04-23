@@ -73,14 +73,14 @@ def _upsert_user_pending_verification(
     """Create or update unverified registration row; does not set email_verified=True."""
     if existing:
         existing.password = hashed_password
-        existing.name = user_data.name
+        existing.name = user_data.name.strip()
         db.commit()
         db.refresh(existing)
         return existing
     user_out = User(
         email=user_data.email,
         password=hashed_password,
-        name=user_data.name,
+        name=user_data.name.strip(),
         email_verified=False,
     )
     db.add(user_out)
@@ -92,6 +92,12 @@ def _upsert_user_pending_verification(
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Create user with email_verified=False and send verification link (SMTP required)."""
+    if not user_data.name.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Full name is required",
+        )
+
     existing = db.query(User).filter(User.email == user_data.email).first()
 
     if existing and existing.email_verified:
@@ -113,7 +119,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     await asyncio.to_thread(
         _send_verification_email_task,
         user_data.email,
-        user_data.name,
+        user_data.name.strip(),
         verify_jwt,
     )
 

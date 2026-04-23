@@ -19,6 +19,10 @@ function Register() {
 
   const handleResendVerification = async () => {
     setError('')
+    if (!name.trim()) {
+      setError('Full name is required')
+      return
+    }
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
@@ -29,7 +33,7 @@ function Register() {
     }
     setResendLoading(true)
     try {
-      const data = await register(email, password, name)
+      const data = await register(email, password, name.trim())
       if (data.access_token) {
         toast.success('Account created successfully!')
         navigate('/')
@@ -47,6 +51,10 @@ function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!name.trim()) {
+      setError('Full name is required')
+      return
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match')
@@ -61,7 +69,7 @@ function Register() {
     setLoading(true)
 
     try {
-      const data = await register(email, password, name)
+      const data = await register(email, password, name.trim())
       if (data.access_token) {
         toast.success('Account created successfully!')
         navigate('/')
@@ -182,6 +190,7 @@ function Register() {
               <input
                 id="name"
                 type="text"
+                required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="input-field"

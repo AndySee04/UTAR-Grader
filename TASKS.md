@@ -442,7 +442,7 @@ These endpoints were removed from the backend as unused by the current web clien
 ## Current Progress
 
 **Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
-**Last Updated**: 2026-04-18
+**Last Updated**: 2026-04-21
 
 ### Priority TODOs
 
@@ -483,6 +483,8 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Simplify account route profile-picture extension validation constants
 - [x] Allow GIF uploads for profile picture input
 - [x] Rename grading report bundle service module to `grading_report_bundle_service.py`
+- [x] Require full name during registration (frontend + backend validation)
+- [x] Use direct `name.trim()` checks (no temporary name variable)
 
 ### Next Steps
 
