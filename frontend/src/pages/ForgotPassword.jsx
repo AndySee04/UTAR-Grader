@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { authAPI } from '../services/api'
 import { useToast } from '../context/ToastContext'
 import ThemeToggle from '../components/ThemeToggle'
+import { isValidEmail } from '../utils/validation'
 
 function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -15,10 +16,15 @@ function ForgotPassword() {
   const submit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address')
+      return
+    }
     setLoading(true)
     try {
-      await authAPI.forgotPassword({ email })
-      setSentEmail(email)
+      const normalizedEmail = email.trim()
+      await authAPI.forgotPassword({ email: normalizedEmail })
+      setSentEmail(normalizedEmail)
       toast.success('If that email is registered, we sent reset instructions.')
     } catch (err) {
       setError(err.response?.data?.detail || 'Could not send reset email')

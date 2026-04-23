@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import ThemeToggle from '../components/ThemeToggle'
+import { isValidEmail } from '../utils/validation'
 
 function Register() {
   const [name, setName] = useState('')
@@ -23,6 +24,10 @@ function Register() {
       setError('Full name is required')
       return
     }
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address')
+      return
+    }
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
@@ -33,7 +38,7 @@ function Register() {
     }
     setResendLoading(true)
     try {
-      const data = await register(email, password, name.trim())
+      const data = await register(email.trim(), password, name.trim())
       if (data.access_token) {
         toast.success('Account created successfully!')
         navigate('/')
@@ -55,6 +60,10 @@ function Register() {
       setError('Full name is required')
       return
     }
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address')
+      return
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match')
@@ -69,7 +78,7 @@ function Register() {
     setLoading(true)
 
     try {
-      const data = await register(email, password, name.trim())
+      const data = await register(email.trim(), password, name.trim())
       if (data.access_token) {
         toast.success('Account created successfully!')
         navigate('/')

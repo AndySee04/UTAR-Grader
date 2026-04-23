@@ -485,6 +485,7 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Rename grading report bundle service module to `grading_report_bundle_service.py`
 - [x] Require full name during registration (frontend + backend validation)
 - [x] Use direct `name.trim()` checks (no temporary name variable)
+- [x] Add explicit invalid-email handling in auth forms (register/login/forgot password)
 
 ### Next Steps
 

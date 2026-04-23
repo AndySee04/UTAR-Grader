@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import ThemeToggle from '../components/ThemeToggle'
+import { isValidEmail } from '../utils/validation'
 
 function sanitizeNext(raw) {
   if (!raw || typeof raw !== 'string') return null
@@ -43,10 +44,14 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address')
+      return
+    }
     setLoading(true)
 
     try {
-      await login(email, password)
+      await login(email.trim(), password)
       toast.success('Welcome back!')
       const dest = sanitizeNext(searchParams.get('next')) || '/'
       navigate(dest)
