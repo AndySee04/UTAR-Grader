@@ -587,10 +587,10 @@ async def upload_multiple_documents(
 ):
     """Upload multiple PDF documents (typically student answer sheets)."""
     # Validate doc_type
-    if doc_type not in ["question_paper", "answer_scheme", "student_answer"]:
+    if doc_type not in ["question_paper", "student_answer"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid document type"
+            detail="Invalid document type."
         )
     
     # Check exam exists and belongs to user
