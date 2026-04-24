@@ -15,8 +15,7 @@ class OCRService:
         
         Args:
             model_name: HuggingFace model name. Options:
-                - microsoft/trocr-large-handwritten (default, for handwriting; heavier/slower)
-                - microsoft/trocr-base-handwritten (lighter, faster)
+                - microsoft/trocr-large-handwritten (default, for handwriten text)
                 - microsoft/trocr-base-printed (for printed text)
         """
         self.model_name = model_name
@@ -102,20 +101,18 @@ class OCRService:
         """
         self._lazy_init()
         
-        # 1. Deskew — straighten tilted scans / phone photos
+        # 1. Deskew — straighten tilted images.
         image = cv_service.deskew_image(image)
 
-        # Enhance once at the region level so both:
-        # - line detection (CRAFT/OpenCV)
-        # - TrOCR input
-        # use the same processed pixels.
+        # 2. Enhance the image
         enhanced_image = cv_service.enhance_for_ocr(image)
 
         if not detect_lines:
+            # 3. Extract text from the enhanced image.
             text = self.extract_text_from_line(enhanced_image)
             return text, [{"text": text, "region": None}]
 
-        # Detect text lines on the enhanced image.
+        # 4. Detect text lines on the enhanced image.
         model_name_lower = (self.model_name or "").lower()
         method = "craft" if "handwritten" in model_name_lower else "opencv"
         crop_source = enhanced_image
