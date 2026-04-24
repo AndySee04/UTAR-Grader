@@ -139,7 +139,7 @@ function GradePaper() {
   const [regionCountByDocId, setRegionCountByDocId] = useState({})
   const [answerGuideDrafts, setAnswerGuideDrafts] = useState({})
   const [savingAnswerGuideId, setSavingAnswerGuideId] = useState(null)
-  const [autoCleanupEnabled, setAutoCleanupEnabled] = useState(true)
+  const [questionCleanupEnabled, setQuestionCleanupEnabled] = useState(true)
   const [regionCleanupMeta, setRegionCleanupMeta] = useState({})
   const [gradingProvider, setGradingProvider] = useState('ollama')
   const [gradingModel, setGradingModel] = useState('')
@@ -572,7 +572,7 @@ function GradePaper() {
           const finalText = cleanedText ?? raw_text
           const basePayload = { raw_text: finalText, marks }
           await processingAPI.updateRegionText(region.id, basePayload).catch(() => {})
-          const cleanupResult = await maybeCleanupExtractedText(region.id, finalText)
+          const cleanupResult = await cleanupQuestionRegionText(region.id, finalText)
           const postCleanText = cleanupResult.text ?? finalText
 
           setRegions(prev => {
@@ -619,7 +619,7 @@ function GradePaper() {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
     }
-  }, [isCropping, selectedDocId, activePage, selectedDocType, regions.length, questionTemplateRegions.length, autoCleanupEnabled])
+  }, [isCropping, selectedDocId, activePage, selectedDocType, regions.length, questionTemplateRegions.length, questionCleanupEnabled])
 
   // Drag handlers
   const handleDrag = useCallback((e, zone) => {
@@ -1053,8 +1053,8 @@ function GradePaper() {
     setRegionCountByDocId(prev => ({ ...prev, [docId]: (prev[docId] ?? 0) + 1 }))
   }
 
-  const maybeCleanupExtractedText = async (regionId, fallbackText) => {
-    if (!autoCleanupEnabled || selectedDocType !== 'question') {
+  const cleanupQuestionRegionText = async (regionId, fallbackText) => {
+    if (!questionCleanupEnabled || selectedDocType !== 'question') {
       return { text: fallbackText, changed: false, provider: null, model: null, fallbackUsed: false }
     }
     try {
@@ -1092,7 +1092,7 @@ function GradePaper() {
       const { marks, cleanedText } = extractMarksAndClean(newText || '')
       const finalText = cleanedText ?? newText
       await processingAPI.updateRegionText(regionId, { raw_text: finalText, marks }).catch(() => {})
-      const cleanupResult = await maybeCleanupExtractedText(regionId, finalText)
+      const cleanupResult = await cleanupQuestionRegionText(regionId, finalText)
       const postCleanText = cleanupResult.text ?? finalText
 
       setRegions(prev => prev.map(r => (
@@ -2030,8 +2030,8 @@ function GradePaper() {
                   <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300">
                     <input
                       type="checkbox"
-                      checked={autoCleanupEnabled}
-                      onChange={(e) => setAutoCleanupEnabled(e.target.checked)}
+                      checked={questionCleanupEnabled}
+                      onChange={(e) => setQuestionCleanupEnabled(e.target.checked)}
                       className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                     />
                     Auto-clean extracted question text (Ollama)
