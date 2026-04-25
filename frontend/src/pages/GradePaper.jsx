@@ -938,34 +938,6 @@ function GradePaper() {
     }
   }
 
-  const processingPollRef = useRef(null)
-  const startProcessingPoll = () => {
-    if (processingPollRef.current) return
-    processingPollRef.current = setInterval(async () => {
-      if (!examId) return
-      try {
-        const res = await examsAPI.get(examId)
-        if (res.data?.status === 'draft') {
-          setExamStatus('draft')
-          stopProcessingPoll()
-          toast.success('Processing complete')
-          setStep(2)
-        }
-      } catch {
-        // ignore
-      }
-    }, 3000)
-  }
-  const stopProcessingPoll = () => {
-    if (processingPollRef.current) {
-      clearInterval(processingPollRef.current)
-      processingPollRef.current = null
-    }
-  }
-  useEffect(() => {
-    return () => stopProcessingPoll()
-  }, [examId])
-
   const handleSaveStudentFileName = async (doc) => {
     const ext = getStudentAnswerExtension(doc)
     const baseRaw =
