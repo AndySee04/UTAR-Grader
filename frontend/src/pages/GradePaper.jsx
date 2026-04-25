@@ -1167,25 +1167,6 @@ function GradePaper() {
     setShowRegionModal(false)
   }
 
-  // Step 3: Generate Marking Guide
-  const handleGenerateGuide = async () => {
-    setLoading(true)
-    setError('')
-    toast.info('Generating marking guide... This may take a minute.')
-
-    try {
-      const res = await markingGuideAPI.generate(examId)
-      setMarkingGuide(res.data.marking_guide || [])
-      toast.success('Marking guide generated!')
-      setStep(2)
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to generate marking guide')
-      toast.error('Failed to generate marking guide')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const updateGuideQuestion = async (index, field, value) => {
     const guide = markingGuide[index]
     const updated = { ...guide, [field]: value }

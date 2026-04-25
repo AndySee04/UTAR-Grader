@@ -381,46 +381,6 @@ class LLMService:
             logprob_token_count=result.logprob_token_count,
         )
     
-    async def generate_marking_guide(
-        self,
-        question_text: str,
-        answer_scheme_text: str
-    ) -> LLMResponse:
-        """
-        Generate marking guide from question paper and answer scheme.
-        
-        Args:
-            question_text: Text from question paper
-            answer_scheme_text: Text from answer scheme
-            
-        Returns:
-            LLMResponse with marking guide JSON
-        """
-        system_prompt = """You are an exam marking guide generator. Create a structured marking guide 
-        based on the question paper and answer scheme provided.
-        Return a JSON array where each item represents a question with its marking criteria."""
-
-        prompt = f"""Create a marking guide from:
-        
-        QUESTION PAPER:
-        {question_text}
-        
-        ANSWER SCHEME:
-        {answer_scheme_text}
-        
-        Return JSON array:
-        [
-          {{
-            "question_number": "1",
-            "question_text": "the question",
-            "question_type": "mcq|structured|open_ended",
-            "answer_scheme": "expected answer or marking criteria",
-            "max_marks": 5
-          }}
-        ]"""
-
-        return await self._call_ollama(prompt, system_prompt)
-    
     async def grade_answer(
         self,
         question: str,

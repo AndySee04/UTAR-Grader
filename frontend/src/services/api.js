@@ -143,8 +143,6 @@ export const processingAPI = {
 
 // Marking Guide
 export const markingGuideAPI = {
-  generate: (examId, useLLM = true) =>
-    api.post(`/exams/${examId}/generate-guide`, { use_llm: useLLM }),
   get: (examId) => api.get(`/exams/${examId}/marking-guide`),
   addQuestion: (examId, data) =>
     api.post(`/exams/${examId}/marking-guide`, data),

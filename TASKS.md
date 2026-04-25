@@ -387,7 +387,6 @@ The **Task / when used** column ties each route to a **concrete action** in the 
 
 | Method | Endpoint | Task / when used |
 | ------ | -------- | ------------------ |
-| POST | `/api/exams/{exam_id}/generate-guide` | **AI-generate guide** — build or enrich marking guide from documents (LLM path; user triggers from Grade Paper). |
 | GET | `/api/exams/{exam_id}/marking-guide` | **Load all questions** — fill the marking guide editor; also read before rebuild in “Process documents”. |
 | POST | `/api/exams/{exam_id}/marking-guide` | **Add question** — create one marking-guide row (manual add, or after process builds rows from crops). |
 | PUT | `/api/marking-guide/{guide_id}` | **Edit question** — update fields (text, marks, scheme, etc.) inline in the guide table. |
@@ -433,6 +432,7 @@ These endpoints were removed from the backend as unused by the current web clien
 | POST | `/api/exams/{exam_id}/process` | Background auto-detect + OCR for exam docs (never called by UI) |
 | GET | `/api/health/ocr` | OCR service health |
 | GET | `/api/health/llm` | LLM service health |
+| POST | `/api/exams/{exam_id}/generate-guide` | LLM-based guide generation (retired; DB-driven process flow now authoritative) |
 | GET | `/api/marking-guide/{guide_id}` | Get one marking-guide row |
 | GET | `/api/exams/{exam_id}/grades/{document_id}` | Grades for one student document |
 | GET | `/api/exams/{exam_id}/progress` | Grading progress counts |
@@ -442,7 +442,7 @@ These endpoints were removed from the backend as unused by the current web clien
 ## Current Progress
 
 **Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
-**Last Updated**: 2026-04-21
+**Last Updated**: 2026-04-25
 
 ### Priority TODOs
 
@@ -488,6 +488,7 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Add explicit invalid-email handling in auth forms (register/login/forgot password)
 - [x] Rename crop cleanup helper to `cleanupQuestionRegionText` for clarity
 - [x] Rename question cleanup toggle state to `questionCleanupEnabled`
+- [x] Remove LLM marking-guide generation path (`/generate-guide`) and keep DB-only guide flow
 
 ### Next Steps
 

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 
 
 class MarkingGuideCreate(BaseModel):
@@ -35,12 +35,3 @@ class MarkingGuideResponse(BaseModel):
         from_attributes = True
 
 
-class GenerateGuideRequest(BaseModel):
-    use_llm: bool = True  # If false, just structure from OCR text
-
-
-class GenerateGuideResponse(BaseModel):
-    exam_id: str
-    questions_generated: int
-    total_marks: float
-    marking_guide: List[MarkingGuideResponse]
