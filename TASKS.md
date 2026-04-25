@@ -491,6 +491,7 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Remove LLM marking-guide generation path (`/generate-guide`) and keep DB-only guide flow
 - [x] Persist grading audit metadata (`prompt_used`, `tokens_used`) in `llm_responses`
 - [x] Standardize `llm_responses.model_used` format to `provider:model` for cleanup + grading
+- [x] Refactor `handleProcess` into helper stages while preserving region-driven regeneration (load guide -> delete -> read regions -> rebuild)
 
 ### Next Steps
 

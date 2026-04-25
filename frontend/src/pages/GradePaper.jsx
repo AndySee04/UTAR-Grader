@@ -825,83 +825,111 @@ function GradePaper() {
     }
   }
 
-  // Step 2: Process (non-blocking: start in background, optional poll to advance when done)
+  const ensureProcessPrerequisites = () => {
+    if (!examId || !uploadedDocs.question?.id) {
+      throw new Error('Question paper is missing for this exam')
+    }
+  }
+
+  const loadExistingGuideRows = async () => {
+    try {
+      const existingRes = await markingGuideAPI.get(examId)
+      return Array.isArray(existingRes.data) ? existingRes.data : []
+    } catch {
+      return []
+    }
+  }
+
+  const deleteExistingGuideRows = async (rows) => {
+    if (!rows.length) return
+    await Promise.all(
+      rows.map((q) =>
+        markingGuideAPI.deleteQuestion(q.id).catch(() => {})
+      )
+    )
+  }
+
+  const loadQuestionPaperRegions = async () => {
+    const regionsRes = await documentsAPI.getRegions(uploadedDocs.question.id)
+    return Array.isArray(regionsRes.data) ? regionsRes.data : []
+  }
+
+  const buildGuidePayloadFromRegion = (region, index, existingGuideByQNum) => {
+    const originalQNum = (region.question_number || '').trim()
+    const question_number = originalQNum || String(index + 1)
+    const question_text = (region.processed_text || region.raw_text || '').trim()
+    const rawMarks = region.marks
+    const max_marks = rawMarks ?? 0
+    const prevGuide = existingGuideByQNum.get(question_number)
+
+    // Skip empty placeholder regions (no text, no explicit q-number, no non-zero marks).
+    const hasText = !!question_text
+    const hasExplicitQNum = !!originalQNum
+    const hasMarks = rawMarks != null && Number(rawMarks) !== 0
+    if (!hasText && !hasExplicitQNum && !hasMarks) return null
+
+    return {
+      question_number,
+      question_text,
+      question_type: 'structured',
+      max_marks,
+      // Preserve teacher-authored answer scheme when question number matches.
+      answer_scheme: prevGuide?.answer_scheme || '',
+      keypoint_marks: prevGuide?.keypoint_marks || ''
+    }
+  }
+
+  const rebuildGuideRowsFromRegions = async (regions, existingGuideByQNum) => {
+    const newGuide = []
+    for (const region of regions) {
+      const payload = buildGuidePayloadFromRegion(region, newGuide.length, existingGuideByQNum)
+      if (!payload) continue
+
+      try {
+        const created = await markingGuideAPI.addQuestion(examId, payload)
+        newGuide.push(created.data)
+      } catch {
+        // Ignore individual failures and continue rebuilding remaining rows.
+      }
+    }
+    return newGuide
+  }
+
+  // Step 2: Process (region-driven regeneration)
+  // 1) Load existing guide rows.
+  // 2) Delete all current guide rows.
+  // 3) Read cropped question-paper regions from DB.
+  // 4) Rebuild guide rows from region OCR text/marks.
+  // 5) Move to Step 3 for manual review/editing.
   const handleProcess = async () => {
     setError('')
     setProcessing(true)
-    setProcessStatus('Building marking guide from cropped question paper...')
+    setProcessStatus('Regenerating marking guide from cropped question regions...')
     try {
-      if (!examId || !uploadedDocs.question?.id) {
-        throw new Error('Question paper is missing for this exam')
-      }
+      ensureProcessPrerequisites()
 
-      // Load existing marking guide and clear it (we'll regenerate from cropped question regions)
-      let existingGuide = []
-      try {
-        const existingRes = await markingGuideAPI.get(examId)
-        existingGuide = Array.isArray(existingRes.data) ? existingRes.data : []
-      } catch {
-        existingGuide = []
-      }
-
+      // 1) Load existing guide rows.
+      const existingGuide = await loadExistingGuideRows()
       const existingGuideByQNum = new Map(
         existingGuide
           .map((q) => [String(q.question_number || '').trim(), q])
           .filter(([qNum]) => qNum.length > 0)
       )
 
-      if (existingGuide.length > 0) {
-        await Promise.all(
-          existingGuide.map((q) =>
-            markingGuideAPI.deleteQuestion(q.id).catch(() => {})
-          )
-        )
-      }
+      // 2) Delete all current guide rows.
+      await deleteExistingGuideRows(existingGuide)
 
-      // Load cropped regions from the question paper and turn them into marking guide questions
-      const regionsRes = await documentsAPI.getRegions(uploadedDocs.question.id)
-      const regionList = Array.isArray(regionsRes.data) ? regionsRes.data : []
+      // 3) Read cropped question-paper regions from DB.
+      const regionList = await loadQuestionPaperRegions()
 
-      const newGuide = []
-      for (const r of regionList) {
-        const originalQNum = (r.question_number || '').trim()
-        const question_number = originalQNum || String(newGuide.length + 1)
-        const question_text = (r.processed_text || r.raw_text || '').trim()
-        const rawMarks = r.marks
-        const max_marks = rawMarks ?? 0
-        const prevGuide = existingGuideByQNum.get(question_number)
-
-        // Skip regions that have no meaningful content:
-        // - no OCR text
-        // - no explicit question number set on the region
-        // - and no non-zero marks
-        const hasText = !!question_text
-        const hasExplicitQNum = !!originalQNum
-        const hasMarks = rawMarks != null && Number(rawMarks) !== 0
-        if (!hasText && !hasExplicitQNum && !hasMarks) continue
-
-        const payload = {
-          question_number,
-          question_text,
-          question_type: 'structured',
-          max_marks,
-          // Preserve teacher-authored guide data when question number matches.
-          answer_scheme: prevGuide?.answer_scheme || '',
-          keypoint_marks: prevGuide?.keypoint_marks || ''
-        }
-
-        try {
-          const created = await markingGuideAPI.addQuestion(examId, payload)
-          newGuide.push(created.data)
-        } catch {
-          // Ignore individual failures, continue with others
-        }
-      }
+      // 4) Rebuild guide rows from region OCR text/marks.
+      const newGuide = await rebuildGuideRowsFromRegions(regionList, existingGuideByQNum)
 
       setMarkingGuide(newGuide)
       setExamStatus('draft')
-      toast.success('Marking guide template created from cropped question paper')
-      // Move directly to the Marking Guide step where the user can review/edit.
+      toast.success('Marking guide regenerated from cropped question regions')
+      
+      // 5) Move directly to the Marking Guide step for review/editing.
       setStep(2)
       setProcessStatus('')
       setProcessing(false)
