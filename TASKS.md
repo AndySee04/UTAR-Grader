@@ -488,6 +488,7 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Add explicit invalid-email handling in auth forms (register/login/forgot password)
 - [x] Rename crop cleanup helper to `cleanupQuestionRegionText` for clarity
 - [x] Rename question cleanup toggle state to `questionCleanupEnabled`
+- [x] Rename process guard helper to `ensureQuestionPaperExists` for clarity
 - [x] Remove LLM marking-guide generation path (`/generate-guide`) and keep DB-only guide flow
 - [x] Persist grading audit metadata (`prompt_used`, `tokens_used`) in `llm_responses`
 - [x] Standardize `llm_responses.model_used` format to `provider:model` for cleanup + grading

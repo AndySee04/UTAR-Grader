@@ -825,7 +825,7 @@ function GradePaper() {
     }
   }
 
-  const ensureProcessPrerequisites = () => {
+  const ensureQuestionPaperExists = () => {
     if (!examId || !uploadedDocs.question?.id) {
       throw new Error('Question paper is missing for this exam')
     }
@@ -906,7 +906,7 @@ function GradePaper() {
     setProcessing(true)
     setProcessStatus('Regenerating marking guide from cropped question regions...')
     try {
-      ensureProcessPrerequisites()
+      ensureQuestionPaperExists()
 
       // 1) Load existing guide rows.
       const existingGuide = await loadExistingGuideRows()
@@ -921,14 +921,12 @@ function GradePaper() {
 
       // 3) Read cropped question-paper regions from DB.
       const regionList = await loadQuestionPaperRegions()
-
       // 4) Rebuild guide rows from region OCR text/marks.
       const newGuide = await rebuildGuideRowsFromRegions(regionList, existingGuideByQNum)
 
       setMarkingGuide(newGuide)
       setExamStatus('draft')
       toast.success('Marking guide regenerated from cropped question regions')
-      
       // 5) Move directly to the Marking Guide step for review/editing.
       setStep(2)
       setProcessStatus('')
