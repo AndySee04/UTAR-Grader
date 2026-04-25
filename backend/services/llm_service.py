@@ -344,23 +344,21 @@ class LLMService:
         Returns:
             LLMResponse with cleaned text
         """
-        system_prompt = """You are an expert OCR text cleaner.
-        Return ONLY valid JSON with exactly one key:
-        {"corrected_text":"..."}
-        
-        Rules:
-        - Fix OCR character errors and obvious spelling/grammar mistakes.
-        - Keep original meaning.
-        - Keep numbering, labels, and line breaks when possible.
-        - Do not add any keys besides corrected_text.
-        - Do not include markdown, comments, or extra text.
-        """
+        system_prompt = """You are an expert OCR text cleaner. Return ONLY valid JSON with exactly one key:
+{"corrected_text":"..."}
+
+Rules:
+- Fix OCR character errors and obvious spelling/grammar mistakes.
+- Keep original meaning.
+- Preserve numbering, labels, and line breaks where possible.
+- Do not add any keys besides corrected_text.
+- Do not include markdown, comments, or extra text."""
 
         prompt = f"""Clean this OCR text and return JSON only:
-        OCR_TEXT_START
-        {raw_text}
-        OCR_TEXT_END
-        """
+        
+OCR_TEXT_START 
+{raw_text} 
+OCR_TEXT_END"""
 
         result = await self._call_ollama(prompt, system_prompt)
         parsed = result.parsed_response if isinstance(result.parsed_response, dict) else None
@@ -403,50 +401,49 @@ class LLMService:
             LLMResponse with grading result JSON
         """
         system_prompt = """You are a strict but fair exam grader.
+        
+Grading rules:
+- Grade ONLY on meaning and required key points from the marking scheme.
+- DO NOT deduct marks for spelling, grammar, punctuation, capitalization, or minor missing symbols if the intended meaning/key point is clear.
+- Treat common misspellings as correct (e.g., "verity" should count as "verify").
+- DO NOT mention spelling/grammar mistakes in feedback.
+- You MUST NOT invent content that is not in the student's answer.
 
-        Grading rules:
-        - Grade ONLY on meaning and required key points from the marking scheme.
-        - DO NOT deduct marks for spelling, grammar, punctuation, capitalization, or minor missing symbols if the intended meaning/key point is clear.
-        - Treat common misspellings as correct (e.g., "verity" should count as "verify").
-        - DO NOT mention spelling/grammar mistakes in feedback.
-        - You MUST NOT invent content that is not in the student's answer.
+Scoring rules:
+- The score must be a whole number (no decimals).
+- Follow the marking score stated in the marking scheme.
+- Score must be within [0, max_marks].
 
-        Scoring rules:
-        - The score must be a whole number (no decimals).
-        - Follow the marking score stated in the answer scheme.
-        - Score must be within [0, max_marks].
+Return only valid JSON (no markdown, no extra text)."""
 
-        Return only valid JSON (no markdown, no extra text).
-        """
-
+        # Compact the question, answer scheme, and student answer to reduce prompt noise.
         q = self._compact_block(question)
         scheme = self._compact_block(answer_scheme)
         ans = self._compact_student_answer(student_answer)
 
         # Keep the prompt compact but structured for stable grading.
         prompt = f"""Grade this exam answer.
-        Max marks: {max_marks}
+Max marks: {max_marks}
 
-        Question:
-        {q}
+Question:
+{q}
 
-        Marking scheme:
-        {scheme}
+Marking scheme:
+{scheme}
 
-        Student answer:
-        {ans}
+Student answer:
+{ans}
 
-        Important:
-        - Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.
-        - Include 1-2 exact quotes copied from the student's answer as evidence.
-        - Each evidence quote MUST correspond to exactly ONE marking point (do not combine multiple points into one quote).
-        - If there is no relevant evidence in the student's answer, return score 0.
+Important:
+- Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.
+- Include 1-2 exact quotes copied from the student's answer as evidence.
+- Each evidence quote MUST correspond to exactly ONE marking point (do not combine multiple points into one quote).
+- If there is no relevant evidence in the student's answer, return score 0.
 
-        Process requirement: decide the feedback first, then choose a score that matches the feedback.
+Process requirement: decide the feedback first, then choose a score that matches the feedback.
 
-        Return JSON only:
-        {{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}
-        """
+Return JSON only:
+{{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}"""
 
         provider_norm = (provider or "ollama").strip().lower()
         if provider_norm == "openrouter":
