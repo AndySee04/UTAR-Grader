@@ -494,6 +494,7 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Standardize `llm_responses.model_used` format to `provider:model` for cleanup + grading
 - [x] Refactor `handleProcess` into helper stages while preserving region-driven regeneration (load guide -> delete -> read regions -> rebuild)
 - [x] Remove unused `startProcessingPoll` dead code from `GradePaper.jsx`
+- [x] Enforce whole-number score overrides in Exam Results (frontend + backend guard)
 
 ### Next Steps
 

@@ -19,7 +19,7 @@ class GradeResponse(BaseModel):
 
 
 class GradeUpdate(BaseModel):
-    score: float = Field(..., ge=0)
+    score: int = Field(..., ge=0)
     feedback: Optional[str] = None
 
 

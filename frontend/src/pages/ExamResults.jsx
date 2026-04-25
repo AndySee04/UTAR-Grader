@@ -49,10 +49,15 @@ function ExamResults() {
     }
   }
 
-  const handleOverrideScore = async (gradeId) => {
-    const score = parseFloat(editScore)
-    if (isNaN(score) || score < 0) {
-      toast.error('Please enter a valid score')
+  const handleOverrideScore = async (gradeId, maxMarks) => {
+    const raw = String(editScore ?? '').trim()
+    if (!/^\d+$/.test(raw)) {
+      toast.error('Please enter a whole-number score')
+      return
+    }
+    const score = Number(raw)
+    if (score < 0 || (maxMarks != null && score > Number(maxMarks))) {
+      toast.error('Score must be between 0 and max marks')
       return
     }
 
@@ -244,14 +249,15 @@ function ExamResults() {
                               value={editScore}
                               onChange={(e) => setEditScore(e.target.value)}
                               className="w-16 px-2 py-1 border border-indigo-300 dark:border-indigo-600 rounded-lg text-sm text-right bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:ring-indigo-500"
-                              step="0.5"
+                              step="1"
                               min="0"
                               max={grade.max_marks}
+                              inputMode="numeric"
                               autoFocus
                             />
                             <span className="text-sm text-gray-400 dark:text-slate-500">/ {grade.max_marks?.toFixed(1)}</span>
                             <button
-                              onClick={() => handleOverrideScore(grade.id)}
+                              onClick={() => handleOverrideScore(grade.id, grade.max_marks)}
                               className="p-1 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded transition-colors"
                               title="Save"
                             >
@@ -289,7 +295,10 @@ function ExamResults() {
                               {grade.score?.toFixed(1)} / {grade.max_marks?.toFixed(1)}
                             </span>
                             <button
-                              onClick={() => { setEditingGrade(grade.id); setEditScore(String(grade.score || 0)) }}
+                              onClick={() => {
+                                setEditingGrade(grade.id)
+                                setEditScore(String(Math.round(Number(grade.score || 0))))
+                              }}
                               className="p-1 text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded transition-all"
                               title="Override score"
                             >

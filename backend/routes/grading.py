@@ -504,6 +504,9 @@ async def override_grade(
     
     if not grade:
         raise HTTPException(status_code=404, detail="Grade not found")
+
+    if grade.max_marks is not None and Decimal(str(update.score)) > grade.max_marks:
+        raise HTTPException(status_code=400, detail="Score cannot exceed max marks")
     
     # Store original if not already overridden
     if not grade.is_overridden:
