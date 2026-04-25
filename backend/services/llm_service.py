@@ -345,22 +345,22 @@ class LLMService:
             LLMResponse with cleaned text
         """
         system_prompt = """You are an expert OCR text cleaner.
-Return ONLY valid JSON with exactly one key:
-{"corrected_text":"..."}
-
-Rules:
-- Fix OCR character errors and obvious spelling/grammar mistakes.
-- Keep original meaning.
-- Keep numbering, labels, and line breaks when possible.
-- Do not add any keys besides corrected_text.
-- Do not include markdown, comments, or extra text."""
+        Return ONLY valid JSON with exactly one key:
+        {"corrected_text":"..."}
+        
+        Rules:
+        - Fix OCR character errors and obvious spelling/grammar mistakes.
+        - Keep original meaning.
+        - Keep numbering, labels, and line breaks when possible.
+        - Do not add any keys besides corrected_text.
+        - Do not include markdown, comments, or extra text.
+        """
 
         prompt = f"""Clean this OCR text and return JSON only:
-
-OCR_TEXT_START
-{raw_text}
-OCR_TEXT_END
-"""
+        OCR_TEXT_START
+        {raw_text}
+        OCR_TEXT_END
+        """
 
         result = await self._call_ollama(prompt, system_prompt)
         parsed = result.parsed_response if isinstance(result.parsed_response, dict) else None
@@ -397,27 +397,27 @@ OCR_TEXT_END
             LLMResponse with marking guide JSON
         """
         system_prompt = """You are an exam marking guide generator. Create a structured marking guide 
-based on the question paper and answer scheme provided.
-Return a JSON array where each item represents a question with its marking criteria."""
+        based on the question paper and answer scheme provided.
+        Return a JSON array where each item represents a question with its marking criteria."""
 
         prompt = f"""Create a marking guide from:
-
-QUESTION PAPER:
-{question_text}
-
-ANSWER SCHEME:
-{answer_scheme_text}
-
-Return JSON array:
-[
-  {{
-    "question_number": "1",
-    "question_text": "the question",
-    "question_type": "mcq|structured|open_ended",
-    "answer_scheme": "expected answer or marking criteria",
-    "max_marks": 5
-  }}
-]"""
+        
+        QUESTION PAPER:
+        {question_text}
+        
+        ANSWER SCHEME:
+        {answer_scheme_text}
+        
+        Return JSON array:
+        [
+          {{
+            "question_number": "1",
+            "question_text": "the question",
+            "question_type": "mcq|structured|open_ended",
+            "answer_scheme": "expected answer or marking criteria",
+            "max_marks": 5
+          }}
+        ]"""
 
         return await self._call_ollama(prompt, system_prompt)
     
@@ -444,43 +444,49 @@ Return JSON array:
         """
         system_prompt = """You are a strict but fair exam grader.
 
-Grading rules:
-- Grade ONLY on meaning and required key points from the marking scheme.
-- DO NOT deduct marks for spelling, grammar, punctuation, capitalization, or minor missing symbols if the intended meaning/key point is clear.
-- Treat common misspellings as correct (e.g., "verity" should count as "verify").
-- DO NOT mention spelling/grammar mistakes in feedback.
-- You MUST NOT invent content that is not in the student's answer.
+        Grading rules:
+        - Grade ONLY on meaning and required key points from the marking scheme.
+        - DO NOT deduct marks for spelling, grammar, punctuation, capitalization, or minor missing symbols if the intended meaning/key point is clear.
+        - Treat common misspellings as correct (e.g., "verity" should count as "verify").
+        - DO NOT mention spelling/grammar mistakes in feedback.
+        - You MUST NOT invent content that is not in the student's answer.
 
-Scoring rules:
-- The score must be a whole number (no decimals).
-- Follow the marking score stated in the answer scheme.
-- Score must be within [0, max_marks].
+        Scoring rules:
+        - The score must be a whole number (no decimals).
+        - Follow the marking score stated in the answer scheme.
+        - Score must be within [0, max_marks].
 
-Return only valid JSON (no markdown, no extra text)."""
+        Return only valid JSON (no markdown, no extra text).
+        """
 
         q = self._compact_block(question)
         scheme = self._compact_block(answer_scheme)
         ans = self._compact_student_answer(student_answer)
 
         # Keep the prompt compact but structured for stable grading.
-        prompt = (
-            "Grade this exam answer.\n"
-            f"Max marks: {max_marks}\n\n"
-            "Question:\n"
-            f"{q}\n\n"
-            "Marking scheme:\n"
-            f"{scheme}\n\n"
-            "Student answer:\n"
-            f"{ans}\n\n"
-            "Important:\n"
-            "- Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.\n"
-            "- Include 1–2 exact quotes copied from the student's answer as evidence.\n"
-            "- Each evidence quote MUST correspond to exactly ONE marking point (do not combine multiple points into one quote).\n"
-            "- If there is no relevant evidence in the student's answer, return score 0.\n\n"
-            "Process requirement: decide the feedback first, then choose a score that matches the feedback.\n\n"
-            "Return JSON only:\n"
-            f'{{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}'
-        )
+        prompt = f"""Grade this exam answer.
+        Max marks: {max_marks}
+
+        Question:
+        {q}
+
+        Marking scheme:
+        {scheme}
+
+        Student answer:
+        {ans}
+
+        Important:
+        - Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.
+        - Include 1-2 exact quotes copied from the student's answer as evidence.
+        - Each evidence quote MUST correspond to exactly ONE marking point (do not combine multiple points into one quote).
+        - If there is no relevant evidence in the student's answer, return score 0.
+
+        Process requirement: decide the feedback first, then choose a score that matches the feedback.
+
+        Return JSON only:
+        {{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}
+        """
 
         provider_norm = (provider or "ollama").strip().lower()
         if provider_norm == "openrouter":
