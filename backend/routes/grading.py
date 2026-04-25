@@ -384,10 +384,12 @@ async def grade_student_paper(
                 exam_id=exam_id,
                 request_type="grading",
                 input_text=f"Q: {(qobj.question_text if qobj else '')}\nStudent: {student_answer_text[:1000]}",
+                prompt_used="grade_answer",
                 raw_response=result.raw_response,
                 parsed_response=parsed,
                 model_used=f"{provider}:{result.model_used}",
-                processing_time_ms=result.processing_time_ms
+                processing_time_ms=result.processing_time_ms,
+                tokens_used=result.tokens_used,
             )
             db.add(llm_resp)
 

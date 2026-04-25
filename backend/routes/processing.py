@@ -275,7 +275,7 @@ async def cleanup_region_text(
     fallback_used = False
     changed = False
     cleaned_text = region.raw_text
-    model_used = llm_service.model
+    model_used = f"ollama:{llm_service.model}"
     tokens_used = None
     processing_time_ms = 0
     llm_error = None
@@ -286,7 +286,7 @@ async def cleanup_region_text(
         parsed_text = str(parsed.get("corrected_text") or "").strip() if parsed else ""
         cleaned_text = parsed_text or (result.raw_response or "").strip() or region.raw_text
         changed = cleaned_text.strip() != (region.raw_text or "").strip()
-        model_used = result.model_used or llm_service.model
+        model_used = f"ollama:{(result.model_used or llm_service.model)}"
         tokens_used = result.tokens_used
         processing_time_ms = result.processing_time_ms or 0
 
