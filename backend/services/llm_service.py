@@ -23,7 +23,12 @@ from config import (
 def _geo_mean_token_prob_from_logprobs(entries: Optional[List[Any]]) -> tuple[Optional[float], int]:
     """
     Geometric mean of completion-token probabilities: exp(mean(logprob)).
-    entries: list of dicts with a numeric 'logprob' (natural log), Ollama/OpenAI-style.
+    
+    Args:
+        entries: list of dicts with a numeric 'logprob' (natural log), Ollama-style.
+    
+    Returns:
+        tuple of (confidence, number of tokens used)
     """
     values: List[float] = []
     for e in entries or []:
