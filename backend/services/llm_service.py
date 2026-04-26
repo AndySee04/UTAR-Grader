@@ -65,17 +65,30 @@ class LLMService:
         self.base_url = base_url
         self.model = model
         self.timeout = 120.0  # 2 minutes timeout for LLM calls
-        self.debug = os.getenv("OLLAMA_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
-        self.debug_max_chars = int(os.getenv("OLLAMA_DEBUG_MAX_CHARS", "4000"))
+        self.ollama_debug = os.getenv("OLLAMA_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+        self.ollama_debug_max_chars = int(os.getenv("OLLAMA_DEBUG_MAX_CHARS", "4000"))
+        self.openrouter_debug = os.getenv("OPENROUTER_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+        self.openrouter_debug_max_chars = int(os.getenv("OPENROUTER_DEBUG_MAX_CHARS", "4000"))
     
     def _dbg(self, label: str, text: str):
-        if not self.debug:
+        if not self.ollama_debug:
             return
         try:
             s = text or ""
-            if len(s) > self.debug_max_chars:
-                s = s[: self.debug_max_chars] + "\n... [truncated] ..."
+            if len(s) > self.ollama_debug_max_chars:
+                s = s[: self.ollama_debug_max_chars] + "\n... [truncated] ..."
             print(f"\n[OLLAMA DEBUG] {label}\n{s}\n")
+        except Exception:
+            pass
+
+    def _dbg_openrouter(self, label: str, text: str):
+        if not self.openrouter_debug:
+            return
+        try:
+            s = text or ""
+            if len(s) > self.openrouter_debug_max_chars:
+                s = s[: self.openrouter_debug_max_chars] + "\n... [truncated] ..."
+            print(f"\n[OPENROUTER DEBUG] {label}\n{s}\n")
         except Exception:
             pass
 
@@ -161,7 +174,7 @@ class LLMService:
             payload["logprobs"] = True
             payload["top_logprobs"] = 0
 
-        if self.debug:
+        if self.ollama_debug:
             try:
                 safe_payload = {
                     "model": payload.get("model"),
@@ -190,7 +203,7 @@ class LLMService:
         processing_time = int((time.time() - start_time) * 1000)
         raw_response = result.get("message", {}).get("content", "")
         
-        if self.debug:
+        if self.ollama_debug:
             try:
                 meta = {
                     "model": result.get("model"),
@@ -255,6 +268,25 @@ class LLMService:
             "Content-Type": "application/json",
         }
 
+        if self.openrouter_debug:
+            try:
+                safe_headers = {
+                    "Authorization": "Bearer ***",
+                    "Content-Type": headers.get("Content-Type"),
+                }
+                safe_payload = {
+                    "model": payload.get("model"),
+                    "temperature": payload.get("temperature"),
+                    "messages": payload.get("messages"),
+                    "logprobs": payload.get("logprobs"),
+                    "top_logprobs": payload.get("top_logprobs"),
+                }
+                self._dbg_openrouter("Request URL", f"{OPENROUTER_BASE_URL}/chat/completions")
+                self._dbg_openrouter("Request headers", json.dumps(safe_headers, indent=2, ensure_ascii=False))
+                self._dbg_openrouter("Request payload", json.dumps(safe_payload, indent=2, ensure_ascii=False))
+            except Exception:
+                pass
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
                 f"{OPENROUTER_BASE_URL}/chat/completions",
@@ -268,6 +300,14 @@ class LLMService:
                     headers=headers,
                     json=payload_retry
                 )
+            if self.openrouter_debug and response.status_code >= 400:
+                try:
+                    self._dbg_openrouter(
+                        f"HTTP error response ({response.status_code})",
+                        response.text or "",
+                    )
+                except Exception:
+                    pass
             response.raise_for_status()
             result = response.json()
 
@@ -287,6 +327,20 @@ class LLMService:
             lp_obj = choice.get("logprobs") or {}
             content = lp_obj.get("content")
             conf_lp, lp_n = _geo_mean_token_prob_from_logprobs(content if isinstance(content, list) else None)
+
+        if self.openrouter_debug:
+            try:
+                meta = {
+                    "model": result.get("model"),
+                    "provider": result.get("provider"),
+                    "usage": result.get("usage"),
+                    "id": result.get("id"),
+                    "processing_time_ms": processing_time,
+                }
+                self._dbg_openrouter("Response meta", json.dumps(meta, indent=2, ensure_ascii=False))
+                self._dbg_openrouter("Raw response content", raw_response)
+            except Exception:
+                pass
 
         return LLMResponse(
             raw_response=raw_response,
