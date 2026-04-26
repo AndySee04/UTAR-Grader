@@ -1692,7 +1692,6 @@ function GradePaper() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                           <div className="flex flex-col min-w-0">
-                            <span className="text-[11px] text-gray-500 dark:text-slate-400">Tap card to crop regions</span>
                             <span className={`text-[11px] font-medium ${
                               croppedDocs.has(doc.id) ? 'text-emerald-600' : 'text-amber-600'
                             }`}>
