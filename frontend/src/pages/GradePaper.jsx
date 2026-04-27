@@ -129,6 +129,7 @@ function GradePaper() {
   const [pageImageUrls, setPageImageUrls] = useState({})
   const [pageDimensions, setPageDimensions] = useState({})
   const [loadingPageImages, setLoadingPageImages] = useState(false)
+  const pageImageCacheRef = useRef({})
   const [processingNewCrop, setProcessingNewCrop] = useState(false)
   const editFocusRef = useRef({ id: null, value: null })
   const addStudentInputRef = useRef(null)
@@ -448,49 +449,87 @@ function GradePaper() {
     return () => { cancelled = true }
   }, [examId, studentDocs.length, uploadedDocs.question?.id])
 
-  // Load all page images when modal opens (seamless scroll)
+  // Load current page first, then lazy-load remaining pages with limited concurrency.
   useEffect(() => {
     if (!showRegionModal || !selectedDocId || !pages?.length) {
-      setPageImageUrls((prev) => {
-        Object.values(prev).forEach(URL.revokeObjectURL)
-        return {}
-      })
+      setPageImageUrls({})
+      setPageDimensions({})
+      setLoadingPageImages(false)
       return
     }
+
     let cancelled = false
-    setLoadingPageImages(true)
     const pageNumbers = pages.map((p) => p.page_number)
-    Promise.all(
-      pageNumbers.map((pn) =>
-        documentsAPI.getPageImage(selectedDocId, pn).then((res) => ({ pn, blob: res.data }))
-      )
-    )
-      .then((results) => {
-        if (cancelled) return
-        setPageImageUrls((prev) => {
-          Object.values(prev).forEach(URL.revokeObjectURL)
-          const next = {}
-          results.forEach(({ pn, blob }) => {
-            next[pn] = URL.createObjectURL(blob)
+    const currentPage = activePage && pageNumbers.includes(activePage) ? activePage : pageNumbers[0]
+    const orderedPages = [
+      currentPage,
+      ...pageNumbers.filter((pn) => pn !== currentPage)
+    ]
+    const cache = pageImageCacheRef.current
+    const cachedUrls = {}
+    orderedPages.forEach((pn) => {
+      const cacheKey = `${selectedDocId}:${pn}`
+      if (cache[cacheKey]) cachedUrls[pn] = cache[cacheKey]
+    })
+    setPageImageUrls(cachedUrls)
+
+    const pagesToFetch = orderedPages.filter((pn) => !cache[`${selectedDocId}:${pn}`])
+    if (pagesToFetch.length === 0) {
+      setLoadingPageImages(false)
+      return () => { cancelled = true }
+    }
+
+    const MAX_CONCURRENT_LOADS = 3
+    let nextIndex = 0
+    setLoadingPageImages(true)
+
+    const loadNextPage = async () => {
+      while (!cancelled) {
+        const index = nextIndex
+        nextIndex += 1
+        if (index >= pagesToFetch.length) return
+
+        const pn = pagesToFetch[index]
+        const cacheKey = `${selectedDocId}:${pn}`
+        try {
+          const res = await documentsAPI.getPageImage(selectedDocId, pn)
+          const objectUrl = URL.createObjectURL(res.data)
+          if (cancelled) {
+            URL.revokeObjectURL(objectUrl)
+            return
+          }
+          if (!cache[cacheKey]) {
+            cache[cacheKey] = objectUrl
+          } else {
+            URL.revokeObjectURL(objectUrl)
+          }
+          setPageImageUrls((prev) => {
+            if (prev[pn]) return prev
+            return { ...prev, [pn]: cache[cacheKey] }
           })
-          return next
-        })
-      })
-      .catch(() => {
-        if (!cancelled) setPageImageUrls({})
-      })
+        } catch {
+          // Keep placeholder on failed page fetch.
+        }
+      }
+    }
+
+    Promise
+      .all(Array.from({ length: Math.min(MAX_CONCURRENT_LOADS, pagesToFetch.length) }, loadNextPage))
       .finally(() => {
         if (!cancelled) setLoadingPageImages(false)
       })
+
     return () => {
       cancelled = true
-      setPageImageUrls((prev) => {
-        Object.values(prev).forEach(URL.revokeObjectURL)
-        return {}
-      })
-      setPageDimensions({})
     }
-  }, [showRegionModal, selectedDocId, pages])
+  }, [showRegionModal, selectedDocId, pages, activePage])
+
+  useEffect(() => {
+    return () => {
+      Object.values(pageImageCacheRef.current).forEach((url) => URL.revokeObjectURL(url))
+      pageImageCacheRef.current = {}
+    }
+  }, [])
 
   // Document-level mouse move/up so crop completes when pointer is released outside the crop div
   useEffect(() => {
@@ -2038,7 +2077,7 @@ function GradePaper() {
                   <div className="w-full md:w-[45%] md:min-w-[280px] md:max-w-[50%] flex-shrink-0 min-h-0 overflow-y-auto overflow-x-hidden">
                     {pages.length > 0 && (
                       <div className="w-full min-w-0 space-y-6">
-                        {loadingPageImages ? (
+                        {loadingPageImages && Object.keys(pageImageUrls).length === 0 ? (
                           <div className="flex items-center justify-center min-h-[40vh] w-full bg-gray-100 dark:bg-slate-800 rounded-xl">
                             <div className="animate-spin rounded-full h-10 w-10 border-2 border-indigo-200 border-t-indigo-600" />
                           </div>
