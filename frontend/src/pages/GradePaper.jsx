@@ -1382,7 +1382,7 @@ function GradePaper() {
               className="btn-secondary w-full mt-3"
               disabled={captureDialog.loading}
             >
-              Scan Student Answer from Phone
+              Scan Student Answer Sheets from Phone
             </button>
             {studentAnswers.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
