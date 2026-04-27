@@ -80,7 +80,7 @@ function ExamResults() {
 
   const downloadStudentPDF = async (docId, studentName) => {
     try {
-      toast.info('Preparing PDF...')
+      toast.info('Preparing PDF download...')
       const res = await reportsAPI.downloadStudentPDF(examId, docId)
       const url = window.URL.createObjectURL(new Blob([res.data]))
       const link = document.createElement('a')
