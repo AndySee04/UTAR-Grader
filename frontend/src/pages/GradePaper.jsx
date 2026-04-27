@@ -640,7 +640,11 @@ function GradePaper() {
             return [...prev, nextRegion]
           })
           markDocCropped(selectedDocId)
-          toast.success('Answer region cropped and processed')
+          toast.success(
+            selectedDocType === 'question'
+              ? 'Question region cropped and processed'
+              : 'Answer region cropped and processed'
+          )
         })
         .catch((err) => {
           const detail = err?.response?.data?.detail ?? err?.message
