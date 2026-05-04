@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import ThemeToggle from '../components/ThemeToggle'
 import { isValidEmail } from '../utils/validation'
+import { sanitizeNext } from '../utils/navigation'
 
 function Register() {
   const [name, setName] = useState('')
@@ -17,6 +18,8 @@ function Register() {
   const { register } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const nextAfterLogin = sanitizeNext(searchParams.get('next'))
 
   const handleResendVerification = async () => {
     setError('')
@@ -273,7 +276,7 @@ function Register() {
           <div className="mt-6 text-center">
             <span className="text-sm text-gray-500 dark:text-slate-400">Already have an account? </span>
             <Link
-              to="/login"
+              to={nextAfterLogin ? `/login?next=${encodeURIComponent(nextAfterLogin)}` : '/login'}
               className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors"
             >
               Sign in

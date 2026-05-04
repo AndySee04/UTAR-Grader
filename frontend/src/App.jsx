@@ -40,7 +40,14 @@ function App() {
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/capture/:sessionId" element={<CaptureSession />} />
+      <Route
+        path="/capture/:sessionId"
+        element={
+          <ProtectedRoute>
+            <CaptureSession />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/" element={
         <ProtectedRoute>
           <Dashboard />

@@ -36,7 +36,12 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
-      window.location.href = "/login";
+      const { pathname, search } = window.location;
+      if (pathname === "/login") {
+        window.location.href = "/login";
+      } else {
+        window.location.href = `/login?next=${encodeURIComponent(pathname + search)}`;
+      }
     }
     return Promise.reject(error);
   },

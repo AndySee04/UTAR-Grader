@@ -4,13 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import ThemeToggle from '../components/ThemeToggle'
 import { isValidEmail } from '../utils/validation'
-
-function sanitizeNext(raw) {
-  if (!raw || typeof raw !== 'string') return null
-  const t = raw.trim()
-  if (!t.startsWith('/') || t.startsWith('//')) return null
-  return t
-}
+import { sanitizeNext } from '../utils/navigation'
 
 function Login() {
   const [email, setEmail] = useState('')
@@ -21,25 +15,24 @@ function Login() {
   const toast = useToast()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const nextAfterLogin = sanitizeNext(searchParams.get('next'))
   const verifiedToastShown = useRef(false)
 
   useEffect(() => {
     if (authLoading) return
-    const next = sanitizeNext(searchParams.get('next'))
-    if (user && next) navigate(next, { replace: true })
-  }, [authLoading, user, searchParams, navigate])
+    if (user && nextAfterLogin) navigate(nextAfterLogin, { replace: true })
+  }, [authLoading, user, nextAfterLogin, navigate])
 
   useEffect(() => {
     if (verifiedToastShown.current) return
     if (searchParams.get('verified') !== '1') return
     verifiedToastShown.current = true
     toast.success('Email verified. You can sign in.')
-    const next = sanitizeNext(searchParams.get('next'))
     const sp = new URLSearchParams()
-    if (next) sp.set('next', next)
+    if (nextAfterLogin) sp.set('next', nextAfterLogin)
     const q = sp.toString()
     navigate(q ? `/login?${q}` : '/login', { replace: true })
-  }, [searchParams, navigate, toast])
+  }, [searchParams, navigate, toast, nextAfterLogin])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -53,7 +46,7 @@ function Login() {
     try {
       await login(email.trim(), password)
       toast.success('Welcome back!')
-      const dest = sanitizeNext(searchParams.get('next')) || '/'
+      const dest = nextAfterLogin || '/'
       navigate(dest)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to login')
@@ -154,7 +147,7 @@ function Login() {
           <div className="mt-6 text-center">
             <span className="text-sm text-gray-500 dark:text-slate-400">Don't have an account? </span>
             <Link
-              to="/register"
+              to={nextAfterLogin ? `/register?next=${encodeURIComponent(nextAfterLogin)}` : '/register'}
               className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-colors"
             >
               Register
