@@ -145,6 +145,8 @@ function GradePaper() {
   const [gradingProvider, setGradingProvider] = useState('ollama')
   const [gradingModel, setGradingModel] = useState('')
   const [captureDialog, setCaptureDialog] = useState({ open: false, loading: false, docType: null, url: '', sessionId: '', expiresAt: null })
+  const [studentDeleteTarget, setStudentDeleteTarget] = useState(null)
+  const [deletingStudentDoc, setDeletingStudentDoc] = useState(false)
 
   const croppedDocs = useMemo(
     () => new Set(Object.entries(regionCountByDocId).filter(([, c]) => c > 0).map(([id]) => id)),
@@ -1028,6 +1030,29 @@ function GradePaper() {
     })
   }
 
+  const confirmDeleteStudentDoc = async () => {
+    if (!studentDeleteTarget?.id) return
+    setDeletingStudentDoc(true)
+    try {
+      await documentsAPI.delete(studentDeleteTarget.id)
+      setUploadedDocs((prev) => ({
+        ...prev,
+        students: (prev.students || []).filter((s) => s.id !== studentDeleteTarget.id),
+      }))
+      setRegionCountByDocId((prev) => {
+        const next = { ...prev }
+        delete next[studentDeleteTarget.id]
+        return next
+      })
+      toast.success('Student answer sheet removed')
+      setStudentDeleteTarget(null)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to remove student answer sheet')
+    } finally {
+      setDeletingStudentDoc(false)
+    }
+  }
+
   // --- Regions View ---
   const handleViewRegions = async (docId, docType = 'student_answer') => {
     setSelectedDocId(docId)
@@ -1696,24 +1721,22 @@ function GradePaper() {
                               </button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 min-w-0 pr-7">
-                              <div className="flex items-baseline gap-0 min-w-0 flex-1">
-                                <span className="text-base font-semibold text-gray-900 dark:text-white truncate">
-                                  {getStudentAnswerBaseName(doc) || 'Student'}
-                                </span>
-                                <span className="text-base font-semibold text-gray-500 dark:text-slate-400 shrink-0">
-                                  {getStudentAnswerExtension(doc)}
-                                </span>
-                              </div>
+                            <div className="flex w-full min-w-0 items-center justify-start gap-x-1 pr-7">
+                              <span className="min-w-0 shrink truncate text-base font-semibold leading-tight text-gray-900 dark:text-white max-w-[calc(100%-3.5rem)]">
+                                {getStudentAnswerBaseName(doc) || 'Student'}
+                              </span>
+                              <span className="shrink-0 text-base font-semibold leading-tight text-gray-500 dark:text-slate-400">
+                                {getStudentAnswerExtension(doc)}
+                              </span>
                               <button
                                 type="button"
-                                className="p-1 -m-1 rounded-md text-gray-900 dark:text-white hover:bg-gray-100/90 dark:hover:bg-white/10 transition-colors flex-shrink-0"
+                                className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-900 dark:text-white hover:bg-gray-100/90 dark:hover:bg-white/10 transition-colors"
                                 title="Rename file"
                                 aria-label={`Rename file ${doc.file_name || doc.id}`}
                                 onClick={() => startEditStudentFileName(doc)}
                               >
                                 <svg
-                                  className="w-[1.1em] h-[1.1em] block"
+                                  className="h-[1.05rem] w-[1.05rem] shrink-0"
                                   fill="none"
                                   viewBox="0 0 24 24"
                                   stroke="currentColor"
@@ -1748,26 +1771,10 @@ function GradePaper() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (!window.confirm('Remove this student answer sheet? This will also delete its cropped regions.')) {
-                              return
-                            }
-                            documentsAPI
-                              .delete(doc.id)
-                              .then(() => {
-                                setUploadedDocs((prev) => ({
-                                  ...prev,
-                                  students: (prev.students || []).filter((s) => s.id !== doc.id)
-                                }))
-                                setRegionCountByDocId((prev) => {
-                                  const next = { ...prev }
-                                  delete next[doc.id]
-                                  return next
-                                })
-                                toast.success('Student answer sheet removed')
-                              })
-                              .catch((err) => {
-                                toast.error(err?.response?.data?.detail || 'Failed to remove student answer sheet')
-                              })
+                            const displayName =
+                              (doc.file_name || '').trim() ||
+                              `${getStudentAnswerBaseName(doc)}${getStudentAnswerExtension(doc)}`
+                            setStudentDeleteTarget({ id: doc.id, displayName })
                           }}
                           className="absolute top-1 right-1 p-1 rounded-full bg-white/80 text-gray-400 hover:text-red-600 hover:bg-red-50 shadow-sm transition-colors"
                           title="Remove student answer sheet"
@@ -2612,6 +2619,39 @@ function GradePaper() {
                 className="btn-primary"
               >
                 Save & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {studentDeleteTarget && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-900/55 backdrop-blur-[1px] p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border border-gray-100 dark:border-slate-700">
+            <div className="p-5">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Delete student answer?</h3>
+              <p className="mt-2 text-sm text-gray-600 dark:text-slate-400">
+                Are you sure you want to delete{' '}
+                <span className="font-medium text-gray-900 dark:text-slate-100">{studentDeleteTarget.displayName}</span>
+                ? This will also delete its cropped regions. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/80 rounded-b-2xl">
+              <button
+                type="button"
+                onClick={() => !deletingStudentDoc && setStudentDeleteTarget(null)}
+                disabled={deletingStudentDoc}
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-white dark:hover:bg-slate-700 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteStudentDoc}
+                disabled={deletingStudentDoc}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingStudentDoc ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
