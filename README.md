@@ -4,24 +4,28 @@ UTAR Grader is an AI-assisted exam grading system using OCR (TrOCR) and LLMs (Ol
 
 ## Features
 
-- **Document Uploading** - Upload exam question papers (PDF) and student answer sheets (PDF/ZIP) via local upload or document scanning using a mobile device.
-- **Manual Cropping of Question Regions** - Draw regions for each question to perform line detection and text extraction (OpenCV + TrOCR), followed by text cleanup (Ollama).
-- **Manual Cropping of Student Answer Regions** - Draw regions for each student answer to perform line detection and text extraction (CRAFT via EasyOCR + TrOCR).
-- **Marking Guide Template Generation** - Generate a marking guide template based on the extracted questions for users to fill in the answer scheme.
-- **AI Grading** - Select an LLM grading provider (Ollama/OpenRouter) to grade student answers automatically.
-- **Generate Report** - Export grading reports in PDF and Excel formats.
-- **Email Notification** - Send account verification, password reset and grading completion emails to users (Gmail SMTP).
+| **Feature** | **Description** |
+|--------|------------|
+| **Document Uploading** | Upload exam question papers (PDF) and student answer sheets (PDF/ZIP) via local upload or document scanning using a mobile device. |
+| **Manual Cropping of Question Regions** | Draw regions for each question to perform line detection and text extraction (OpenCV + TrOCR), followed by text cleanup (Ollama). |
+| **Manual Cropping of Student Answer Regions** | Draw regions for each student answer to perform line detection and text extraction (CRAFT via EasyOCR + TrOCR). |
+| **Marking Guide Template Generation** | Generate a marking guide template based on the extracted questions for users to fill in the answer scheme. |
+| **AI Grading** | Select an LLM grading provider (Ollama/OpenRouter) to grade student answers automatically. |
+| **Generate Report** | Export grading reports in PDF and Excel formats. |
+| **Email Notification** | Send account verification, password reset, and grading completion emails to users (Gmail SMTP). |
 
-## Tech Stack
+## System Architecture
 
-- **Frontend Layer**: React + Vite + TailwindCSS
-- **API Layer**: REST API (FastAPI) behind Cloudflare
-- **OCR Services**: OpenCV/CRAFT via EasyOCR + TrOCR (`microsoft/trocr-base-printed` for question papers, `microsoft/trocr-large-handwritten` for student answers)
-- **LLM Services**: Llama 3.1 8B via Ollama / OpenRouter
-- **Report Services**: ReportLab (PDF) + OpenPyXL (Excel)
-- **Email Services**: Gmail SMTP
-- **Database Layer**: SQLite
-- **GPU**: NVIDIA RTX 4060 (recommended)
+| Layer | Technology |
+|------|-----------|
+| Frontend Layer | React + Vite + TailwindCSS |
+| API Layer | REST API (FastAPI) behind Cloudflare |
+| OCR Services | OpenCV / CRAFT (via EasyOCR) + TrOCR <br>(`microsoft/trocr-base-printed` for question papers, <br>`microsoft/trocr-large-handwritten` for student answers) |
+| LLM Services | Llama 3.1 8B via Ollama / OpenRouter |
+| Report Services | ReportLab (PDF) + OpenPyXL (Excel) |
+| Email Services | Gmail SMTP |
+| Database Layer | SQLite |
+| GPU (Recommended) | NVIDIA RTX 4060 |
 
 ## Grading Workflow
 
