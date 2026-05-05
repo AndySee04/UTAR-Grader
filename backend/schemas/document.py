@@ -4,7 +4,7 @@ from typing import Optional, List
 
 
 class DocumentUpload(BaseModel):
-    doc_type: str = Field(..., pattern="^(question_paper|answer_scheme|student_answer)$")
+    doc_type: str = Field(..., pattern="^(question_paper|student_answer)$")
     file_name: Optional[str] = Field(None, max_length=255)
 
 
@@ -49,7 +49,7 @@ class CropRegion(BaseModel):
     y: int
     width: int
     height: int
-    region_type: str = Field(..., pattern="^(question|answer_scheme|student_answer)$")
+    region_type: str = Field(..., pattern="^(question|student_answer)$")
     question_number: Optional[str] = None
 
 

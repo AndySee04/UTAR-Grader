@@ -308,7 +308,7 @@ A web application for teachers to automatically grade exam papers using OCR (CRA
 | ----------------- | -------------------------------------------------------------- |
 | `users`           | Teacher accounts                                               |
 | `exams`           | Exam sessions                                                  |
-| `documents`       | Uploaded PDFs (question paper, answer scheme, student answers) |
+| `documents`       | Uploaded PDFs (question paper, student answers) |
 | `extracted_text`  | OCR results per region                                         |
 | `marking_guide`   | Question templates with expected answers and marks             |
 | `llm_responses`   | All LLM interactions for audit                                 |
@@ -353,9 +353,9 @@ The **Task / when used** column ties each route to a **concrete action** in the 
 
 | Method | Endpoint | Task / when used |
 | ------ | -------- | ------------------ |
-| POST | `/api/exams/{exam_id}/upload` | **Upload one PDF** — question paper, answer scheme, or a single student script. |
+| POST | `/api/exams/{exam_id}/upload` | **Upload one PDF** — question paper or a single student script. |
 | POST | `/api/exams/{exam_id}/upload-multiple` | **Upload many student PDFs** — batch student answer uploads. |
-| GET | `/api/exams/{exam_id}/documents` | **List documents** — show uploaded files per type (`question_paper`, `answer_scheme`, `student_answer`). |
+| GET | `/api/exams/{exam_id}/documents` | **List documents** — show uploaded files per type (`question_paper`, `student_answer`). |
 | DELETE | `/api/{document_id}` | **Remove a document** — delete one uploaded PDF from the exam. |
 | PATCH | `/api/{document_id}` | **Rename student answer** — update display `file_name` (`.pdf` or `.zip` to match upload) on Process Documents step. |
 | POST | `/api/{document_id}/crop` | **Save a crop** — after drawing a region on a page, store its bounding box (manual crop; no auto-detect in UI). |

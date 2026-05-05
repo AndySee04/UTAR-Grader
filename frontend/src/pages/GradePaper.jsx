@@ -96,9 +96,8 @@ function GradePaper() {
   const [examId, setExamId] = useState(null)
   const [examName, setExamName] = useState('')
   const [questionPaper, setQuestionPaper] = useState(null)
-  const [answerScheme, setAnswerScheme] = useState(null)
   const [studentAnswers, setStudentAnswers] = useState([])
-  const [uploadedDocs, setUploadedDocs] = useState({ question: null, scheme: null, students: [] })
+  const [uploadedDocs, setUploadedDocs] = useState({ question: null, students: [] })
   const [markingGuide, setMarkingGuide] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -346,11 +345,10 @@ function GradePaper() {
       setExamName('')
       setExamStatus(null)
       setStep(0)
-      setUploadedDocs({ question: null, scheme: null, students: [] })
+      setUploadedDocs({ question: null, students: [] })
       setMarkingGuide([])
       setRegionCountByDocId({})
       setQuestionPaper(null)
-      setAnswerScheme(null)
       setStudentAnswers([])
       return
     }
@@ -365,21 +363,19 @@ function GradePaper() {
     Promise.all([
       examsAPI.get(stateExamId),
       documentsAPI.list(stateExamId, 'question_paper'),
-      documentsAPI.list(stateExamId, 'answer_scheme'),
       documentsAPI.list(stateExamId, 'student_answer'),
       markingGuideAPI.get(stateExamId).catch(() => ({ data: [] }))
     ])
-      .then(([examRes, qList, sList, stList, guideRes]) => {
+      .then(([examRes, qList, stList, guideRes]) => {
         if (cancelled) return
         const exam = examRes.data
         if (exam?.name) setExamName(exam.name)
         if (exam?.status) setExamStatus(exam.status)
         const question = Array.isArray(qList.data) ? qList.data[0] : null
-        const scheme = Array.isArray(sList.data) ? sList.data[0] : null
         const students = Array.isArray(stList.data) ? stList.data : []
         const guide = guideRes?.data ?? []
 
-        setUploadedDocs({ question, scheme, students })
+        setUploadedDocs({ question, students })
         setMarkingGuide(guide)
 
         // Decide which step to show when reopening:
@@ -721,16 +717,14 @@ function GradePaper() {
   }
 
   const refreshUploadedDocs = async (targetExamId) => {
-    const [qList, sList, stList] = await Promise.all([
+    const [qList, stList] = await Promise.all([
       documentsAPI.list(targetExamId, 'question_paper'),
-      documentsAPI.list(targetExamId, 'answer_scheme'),
       documentsAPI.list(targetExamId, 'student_answer')
     ])
     const question = Array.isArray(qList.data) ? qList.data[0] : null
-    const scheme = Array.isArray(sList.data) ? sList.data[0] : null
     const students = Array.isArray(stList.data) ? stList.data : []
-    setUploadedDocs({ question, scheme, students })
-    return { question, scheme, students }
+    setUploadedDocs({ question, students })
+    return { question, students }
   }
 
   const ensureExamForCapture = async () => {
@@ -829,7 +823,6 @@ function GradePaper() {
     }
     const hasQuestion = !!uploadedDocs.question || !!questionPaper
     const hasStudents = (uploadedDocs.students?.length || 0) + studentAnswers.length > 0
-    // Answer scheme is optional – only require question paper and at least one student answer
     if (!hasQuestion || !hasStudents) {
       setError('Please upload a question paper and at least one student answer sheet')
       return
@@ -849,16 +842,12 @@ function GradePaper() {
       if (questionPaper) {
         await documentsAPI.upload(targetExamId, questionPaper, 'question_paper')
       }
-      if (answerScheme) {
-        await documentsAPI.upload(targetExamId, answerScheme, 'answer_scheme')
-      }
       if (studentAnswers.length > 0) {
         await documentsAPI.uploadMultiple(targetExamId, studentAnswers, 'student_answer')
       }
 
       await refreshUploadedDocs(targetExamId)
       setQuestionPaper(null)
-      setAnswerScheme(null)
       setStudentAnswers([])
 
       toast.success('Documents uploaded successfully!')
@@ -918,7 +907,7 @@ function GradePaper() {
       question_text,
       question_type: 'structured',
       max_marks,
-      // Preserve teacher-authored answer scheme when question number matches.
+      // Preserve teacher-authored answer guide when question number matches.
       answer_scheme: prevGuide?.answer_scheme || '',
       keypoint_marks: prevGuide?.keypoint_marks || ''
     }
@@ -1852,7 +1841,7 @@ function GradePaper() {
               <div>
                 <p className="text-sm font-medium text-amber-800">No questions generated</p>
                 <p className="text-sm text-amber-700 mt-0.5">
-                  The AI may not have returned a structured list, or the question paper/answer scheme text was empty. Generate the guide again to populate questions.
+                  The AI may not have returned a structured list, or the question paper text was empty. Generate the guide again to populate questions.
                 </p>
               </div>
             </div>

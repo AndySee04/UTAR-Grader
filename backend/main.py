@@ -69,7 +69,6 @@ from routes.account import router as account_router
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(exams_router, prefix="/api/exams", tags=["Exams"])
-# Account must be registered before /api/{document_id} or DELETE /api/account is handled as document_id="account".
 app.include_router(account_router, prefix="/api/account", tags=["Account"])
 app.include_router(documents_router, prefix="/api", tags=["Documents"])
 app.include_router(processing_router, prefix="/api", tags=["Processing"])

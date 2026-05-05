@@ -12,10 +12,10 @@ class ExtractedText(Base):
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     document_id = Column(CHAR(36), ForeignKey("documents.id"), nullable=False)
     page_number = Column(Integer, nullable=True)
-    region_type = Column(String(50), nullable=True)  # question, answer_scheme, student_answer
+    region_type = Column(String(50), nullable=True)
     question_number = Column(String(50), nullable=True)
-    bounding_box = Column(JSON, nullable=True)  # {x, y, width, height}
-    display_order = Column(Integer, nullable=True)  # user-defined order (Q1, Q2, ...)
+    bounding_box = Column(JSON, nullable=True)
+    display_order = Column(Integer, nullable=True)      
     raw_text = Column(Text, nullable=True)
     processed_text = Column(Text, nullable=True)
     marks = Column(Float, nullable=True)
