@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Auto-Grading API",
+    title="UTAR Grader API",
     description="API for automatic exam paper grading using OCR and LLM",
     version="1.0.0",
     lifespan=lifespan
