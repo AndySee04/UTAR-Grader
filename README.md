@@ -29,48 +29,78 @@ UTAR Grader is an AI-assisted exam grading system using OCR (TrOCR) and LLMs (Ol
 
 ## Grading Workflow
 
-- **Stage 1 - Upload Document**
-   - Upload the **question paper** (PDF).
-   - Upload one or more **student answer sheets** (PDF or ZIP).
+### Stage 1 - Upload Document
+![Stage 1 - Upload Document](./Stage%201%20-%20Upload%20Document.png)
 
-- **Stage 2 - Crop Document Region**
-   - **Crop Question Paper**
-      - Open the question paper, draw regions over each question area.
-      - After cropping, OCR is performed on each region to extract:
-         - Question text
-         - Marks allocation
-      - Optional: Apply **auto-cleanup** (Ollama) after OCR to fix spelling errors and grammar mistakes.
-   - **Crop Student Answer Sheet**
-      - Open each student document, draw regions over each answer area
-      - After cropping, OCR is performed on each region to extract:
-         - Answer text
+**(a)** Upload the **question paper** (PDF).
 
-- **Stage 3 - Generate Marking Guide Template**
-   - Click **Start Processing**:
-      -  The system reads extracted question text (stored in `ExtractedText`)
-      -  The system automatically generates a marking guide template: one entry per cropped region with:
-         -  Question number
-         -  Question text
-         -  Marks allocation
-   - In the **Marking Guide** stage:
-      -  Fill in the **answer guide** (stored in `marking_guide.answer_scheme`) for each question.
+**(b)** Upload one or more **student answer sheets** (PDF or ZIP).
 
-- **Stage 4 - Grading**
-   - **Select LLM Grading Provider**:
-      - Choose the preferred LLM provider for grading student answers
-         - **Ollama**
-            - Marks scored
-            - AI feedback
-            - AI confidence score 
-         - **OpenRouter** (No AI confidence score)
-            - Marks scored
-            - AI feedback
-   - Click **Start Grading**:
-      - The system will compare each student's answer against the marking guide using the selected LLM.
-      - After grading, a grading completion email (attached with generated reports) is generated and sent to the user.
-   -  **View Graded Results**:
-      - Lecturers can review all graded student answer sheets.
-      - Optional: Override scores manually if needed (overrides are saved immediately) and regenerate new Excel/PDF reports.
+**(c)** Cick on **Process Documents** button.
+
+_____________________________________________________________________________________________
+
+### Stage 2 - Crop Document Region
+
+![Stage 2 - Document Process](./Stage%202%20-%20Document%20Process.png)
+
+**(a)** Crop question paper.
+
+![Stage 2 - Document Process (Question)](./Stage%202%20-%20Document%20Process%20%28Question%29.png)
+   
+   - Open the question paper, draw regions over each question area.
+   - After cropping, OCR is performed on each region to extract the question text and marks allocation.
+   - Optional: Apply **auto-cleanup** (Ollama) after OCR to fix spelling errors and grammar mistakes.
+
+**(b)** Crop student answer sheet.
+
+![Stage 2 - Document Process (Student Answer)](./Stage%202%20-%20Document%20Process%20%28Student%20Answer%29.png)
+
+   - Open each student document, draw regions over each answer area
+   - After cropping, OCR is performed on each region to extract the answer text.
+
+_____________________________________________________________________________________________
+
+### Stage 3 - Generate Marking Guide Template
+
+![Stage 3 - Generate Marking Guide Template](./Stage%203%20-%20Generate%20Marking%20Guide%20Template.png)
+
+**(a)** Click on **Start Processing** button.
+   -  The system reads extracted question text (stored in `ExtractedText`)
+   -  The system automatically generates a marking guide template: one entry per cropped region with:
+      -  Question number
+      -  Question text
+      -  Marks allocation
+
+**(b)** Fill in the **answer guide** (stored in `marking_guide.answer_scheme`) for each question.
+
+_____________________________________________________________________________________________
+
+### Stage 4 - Grading
+
+![Stage 4 - Grading (Ollama)](./Stage%204%20-%20Grading%20%28Ollama%29.png)
+![Stage 4 - Grading (OpenRouter)](./Stage%204%20-%20Grading%20%28OpenRouter%29.png)
+
+**(a)** Select the desired LLM grading provider.
+   - **Ollama**
+      - Marks scored
+      - AI feedback
+      - AI confidence score
+   - **OpenRouter**
+      - Marks scored
+      - AI feedback
+
+**(b)** Click on **Start Grading** button.
+   - The system will compare each student's answer against the marking guide using the selected LLM.
+   - After all grading tasks are done:
+      - Exam status is updated as "Completed". <br>
+        ![Stage 4 - Grading (Completed status)](./Stage%204%20-%20Grading%20%28Completed%20status%29.png)
+      - Grading completion email (attached with generated reports) is generated and sent to the user. <br>
+        ![Stage 4 - Grading (Grading completion email)](./Stage%204%20-%20Grading%20%28Grading%20completion%20email%29.png)
+
+**(c)** View the graded result page.
+   - Lecturers can review all graded student answer sheets.
+   - Optional: Override scores manually if needed (overrides are saved immediately) and regenerate new Excel/PDF reports.
 
 ## Prerequisites
 
@@ -113,67 +143,19 @@ Frontend runs at `http://localhost:5173`.
 ```bash
 ollama serve
 
-ollama pull llama3:8b
+ollama pull llama3.1:8b
 ```
 
 Ollama is required for grading (and any other LLM features you enable).
 
-### Grading: optional “AI confidence” (logprobs)
+## AI Confidence Score (Ollama only)
+During automated grading, the backend requests completion log probabilities (logprobs) from the chat API and computes an AI confidence score for each graded answer based on token probabilities. 
 
-When you run automated grading, the backend asks the chat API for **completion logprobs** (where supported). It stores a **lexical** confidence score per question on `grades.confidence`: the **geometric mean** of the model’s chosen token probabilities, i.e. **exp(mean(logprob))** over completion tokens, clamped to **[0, 1]**—not a guarantee the mark is “correct.”
+- Stored in `grades.confidence`.
+- Computed as the geometric mean of token probabilities, expressed as exp(mean(logprob)) across all completion tokens.
+- Ranges from 0 to 1.
 
-- **Ollama**: use a version whose **Chat API** returns a top-level `logprobs` array ([Ollama Chat API](https://docs.ollama.com/api/chat)). If the server rejects the request, the backend retries once without logprobs; confidence is then omitted (`null`).
-- **OpenRouter**: logprobs depend on the **upstream model**. Unsupported parameters trigger a retry without logprobs.
-
-Older graded rows or failed logprob requests show **no** confidence in the UI/PDF until you re-run grading.
-
-## OCR tuning (CRAFT + TrOCR)
-
-Use `.env` to control CRAFT detection behavior:
-
-- `CRAFT_PRESET=balanced|faint_handwriting|strict`
-- `CRAFT_TEXT_THRESHOLD`
-- `CRAFT_LINK_THRESHOLD`
-- `CRAFT_LOW_TEXT`
-- `OCR_DIAGNOSTICS=1` (optional debug logs)
-
-Preset values are defaults, and numeric threshold env values override preset values.
-
-### Recommended tuning checklist
-
-1. Start with `CRAFT_PRESET=balanced`.
-2. Run OCR on a sample with known head/tail misses.
-3. If misses remain, switch to `faint_handwriting`.
-4. If over-detection/noisy boxes appear, raise `CRAFT_TEXT_THRESHOLD` and/or `CRAFT_LINK_THRESHOLD`.
-5. Re-run the same sample and compare line coverage and extracted text quality.
-
-### Troubleshooting
-
-- **Ollama cleanup fails**: cleanup endpoint now falls back to original OCR text (non-fatal), so processing continues.
-- **CRAFT misses start/end characters**: try `CRAFT_PRESET=faint_handwriting`, then lower `CRAFT_TEXT_THRESHOLD` slightly.
-- **CRAFT detects too much noise**: use `CRAFT_PRESET=strict` or increase thresholds.
-
-## Debugging (optional)
-
-### Log Ollama request/response (backend terminal)
-
-To print the **exact Ollama request payload** and **raw response** in the backend terminal:
-
-```powershell
-$env:OLLAMA_DEBUG="1"
-$env:OLLAMA_DEBUG_MAX_CHARS="8000"  # optional
-```
-
-Restart the backend after setting these.
-
-### Verify GPU/CUDA
-
-```python
-# Run in Python to verify CUDA is available
-import torch
-print(f"CUDA available: {torch.cuda.is_available()}")
-print(f"GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'}")
-```
+Note that this score represents the model’s confidence in its generated response, and does not guarantee that the assigned mark is correct.
 
 ## Project Structure
 
