@@ -23,27 +23,58 @@ UTAR Grader is an AI-assisted exam grading system using OCR (TrOCR) and LLMs (Ol
 - **Database Layer**: SQLite
 - **GPU**: NVIDIA RTX 4060 (recommended)
 
-## Workflow
+## Grading Workflow
 
-- **Step 1 – Upload & Crop**
-   - Upload the **question paper** PDF and one or more **student answer** PDFs.
-   - **Crop the question paper**: open the question paper, draw regions around each question; OCR runs per region and the extracted text (without trailing “x marks”) plus marks value are saved.
-   - Optional **auto-cleanup** can run immediately after OCR for question regions (Ollama), with safe fallback to original OCR text if Ollama is unavailable.
-   - **Crop each student answer**: open each student document, draw regions over answer areas; OCR runs per region and the per‑question answer text is saved.
-   - For student answer regions, OCR uses **CRAFT text line detection** first, then applies **TrOCR per detected line**, then merges lines into final extracted text.
-- **Step 2 – Review Marking Guide**  
-   - Click **Start Processing**. The app reads the cropped **question paper regions** (and their extracted text stored in `ExtractedText`) and automatically builds a marking guide: one entry per cropped region, including question number, question text, and marks.
-   - In the **Marking Guide** step, review and edit question numbers, wording, marks, and write an **answer guide** for each question (stored in `marking_guide.answer_scheme`).
-- **Step 3 – Grade**  
-   - Start grading to compare each student's cropped answer text with your answer guide using the LLM and assign a **whole‑number score** per question.
-   - Override scores manually if needed (overrides are saved immediately) and export results to Excel/PDF.
+- **Stage 1 - Upload Document**
+   - Upload the **question paper** (PDF).
+   - Upload one or more **student answer sheets** (PDF or ZIP).
+
+- **Stage 2 - Crop Document Region**
+   - **Crop Question Paper**
+      - Open the question paper, draw regions over each question area.
+      - After cropping, OCR is performed on each region to extract:
+         - Question text
+         - Marks allocation
+      - Optional: Apply **auto-cleanup** (Ollama) after OCR to fix spelling errors and grammar mistakes.
+   - **Crop Student Answer Sheet**
+      - Open each student document, draw regions over each answer area
+      - After cropping, OCR is performed on each region to extract:
+         - Answer text
+
+- **Stage 3 - Generate Marking Guide Template**
+   - Click **Start Processing**:
+      -  The system reads extracted question text (stored in `ExtractedText`)
+      -  The system automatically generates a marking guide template: one entry per cropped region with:
+         -  Question number
+         -  Question text
+         -  Marks allocation
+   - In the **Marking Guide** stage:
+      -  Fill in the **answer guide** (stored in `marking_guide.answer_scheme`) for each question.
+
+- **Stage 4 - Grading**
+   - **Select LLM Grading Provider**:
+      - Choose the preferred LLM provider for grading student answers
+         - **Ollama**
+            - Marks scored
+            - AI feedback
+            - AI confidence score 
+         - **OpenRouter** (No AI confidence score)
+            - Marks scored
+            - AI feedback
+   - Click **Start Grading**:
+      - The system will compare each student's answer against the marking guide using the selected LLM.
+      - After grading, a grading completion email (attached with generated reports) is generated and sent to the user.
+   -  **View Graded Results**:
+      - Lecturers can review all graded student answer sheets.
+      - Optional: Override scores manually if needed (overrides are saved immediately) and regenerate new Excel/PDF reports.
 
 ## Prerequisites
 
 - Python 3.11+
 - Node.js 18+
-- NVIDIA GPU with CUDA (for TrOCR acceleration)
+- NVIDIA GPU with CUDA (recommended for TrOCR acceleration)
 - Ollama installed ([https://ollama.ai](https://ollama.ai))
+- (Optional) OpenRouter API key configured ([https://openrouter.ai/](https://openrouter.ai/))
 
 ## Quick start
 
