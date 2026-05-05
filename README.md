@@ -1,27 +1,27 @@
-# Auto-Grading Website
+# UTAR Grader — Auto-Grading Website
 
-An automated exam paper grading system using OCR (CRAFT + TrOCR) and LLM (Ollama) for teachers.
+UTAR Grader is an AI-assisted exam grading system using OCR (TrOCR) and LLMs (Ollama/OpenRouter) to assist teachers.
 
 ## Features
 
-- Upload exam question papers and student answer sheets (PDF)
-- **Region-based question paper cropping**: draw regions per question; each region is OCR‑ed and stored with its question number and marks
-- **Manual cropping of student answers**: draw regions per document, OCR runs on each cropped region; progress is saved so teachers can resume later
-- **Start Processing** builds the marking guide directly from cropped **question paper regions** (no separate answer‑scheme PDF needed)
-- Automatic text extraction using CRAFT + TrOCR for cropped student answers (line detection first, then line-level recognition)
-- AI-powered marking guide generation from cropped question regions
-- Automated grading with LLM using per‑question cropped student answers and your answer guides
-- Teacher override for scores
-- Export results to Excel and PDF
+- **Document Uploading** - Upload exam question papers (PDF) and student answer sheets (PDF/ZIP) via local upload or document scanning using a mobile device.
+- **Manual Cropping of Question Regions** - Draw regions for each question to perform line detection and text extraction (OpenCV + TrOCR), followed by text cleanup (Ollama).
+- **Manual Cropping of Student Answer Regions** - Draw regions for each student answer to perform line detection and text extraction (CRAFT via EasyOCR + TrOCR).
+- **Marking Guide Template Generation** - Generate a marking guide template based on the extracted questions for users to fill in the answer scheme.
+- **AI Grading** - Select an LLM grading provider (Ollama/OpenRouter) to grade student answers automatically.
+- **Generate Report** - Export grading reports in PDF and Excel formats.
+- **Email Notification** - Send account verification, password reset and grading completion emails to users (Gmail SMTP).
 
 ## Tech Stack
 
-- **Backend**: FastAPI (Python)
-- **Frontend**: React + Vite + TailwindCSS
-- **Database**: SQLite (development) / PostgreSQL (production)
-- **OCR**: CRAFT (EasyOCR detector) + TrOCR (microsoft/trocr-base-printed for question papers, microsoft/trocr-large-handwritten for student answers)
-- **LLM**: Ollama + Llama 3 / Mistral
-- **GPU**: NVIDIA RTX 4060 recommended
+- **Frontend Layer**: React + Vite + TailwindCSS
+- **API Layer**: REST API (FastAPI) behind Cloudflare
+- **OCR Services**: OpenCV/CRAFT via EasyOCR + TrOCR (`microsoft/trocr-base-printed` for question papers, `microsoft/trocr-large-handwritten` for student answers)
+- **LLM Services**: Llama 3.1 8B via Ollama / OpenRouter
+- **Report Services**: ReportLab (PDF) + OpenPyXL (Excel)
+- **Email Services**: Gmail SMTP
+- **Database Layer**: SQLite
+- **GPU**: NVIDIA RTX 4060 (recommended)
 
 ## Workflow
 
@@ -147,7 +147,7 @@ Auto Exam Grading Website/
 ├── backend/
 │   ├── main.py                 # FastAPI entry point
 │   ├── config.py               # Configuration
-│   ├── database.py            # Database setup
+│   ├── database.py             # Database setup
 │   ├── models/                 # SQLAlchemy models
 │   ├── routes/                 # API endpoints
 │   ├── services/               # Business logic (OCR, LLM, etc.)
