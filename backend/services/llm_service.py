@@ -460,29 +460,29 @@ OCR_TEXT_END"""
             LLMResponse with grading result JSON
         """
         system_prompt = """You are a strict but fair exam grader.
-        
+
 Grading rules:
 - Grade ONLY on meaning and required key points from the marking scheme.
 - DO NOT deduct marks for spelling, grammar, punctuation, capitalization, or minor missing symbols if the intended meaning/key point is clear.
 - Treat common misspellings as correct (e.g., "verity" should count as "verify").
 - DO NOT mention spelling/grammar mistakes in feedback.
 - You MUST NOT invent content that is not in the student's answer.
+- Include 1-2 exact quotes from the student's answer as evidence; each quote maps to one marking point. If none apply, score 0.
 
 Scoring rules:
 - The score must be a whole number (no decimals).
 - Follow the marking score stated in the marking scheme.
 - Score must be within [0, max_marks].
+- Decide feedback first, then choose a score that matches it.
 
-Return only valid JSON (no markdown, no extra text)."""
+Return only valid JSON (no markdown, no extra text):
+{"score": <whole number>, "feedback": "<brief justification>", "evidence_quotes": ["<quote 1>", "<quote 2>"]}"""
 
-        # Compact the question, answer scheme, and student answer to reduce prompt noise.
         q = self._compact_block(question)
         scheme = self._compact_block(answer_scheme)
         ans = self._compact_student_answer(student_answer)
 
-        # Keep the prompt compact but structured for stable grading.
-        prompt = f"""Grade this exam answer.
-Max marks: {max_marks}
+        prompt = f"""Max marks: {max_marks}
 
 Question:
 {q}
@@ -491,18 +491,7 @@ Marking scheme:
 {scheme}
 
 Student answer:
-{ans}
-
-Important:
-- Ignore spelling/grammar/punctuation. If meaning matches a key point, award the mark.
-- Include 1-2 exact quotes copied from the student's answer as evidence.
-- Each evidence quote MUST correspond to exactly ONE marking point (do not combine multiple points into one quote).
-- If there is no relevant evidence in the student's answer, return score 0.
-
-Process requirement: decide the feedback first, then choose a score that matches the feedback.
-
-Return JSON only:
-{{"score": <whole number 0..{max_marks}>, "feedback": "<brief justification>", "evidence_quotes": ["<exact quote 1>", "<exact quote 2>"]}}"""
+{ans}"""
 
         provider_norm = (provider or "ollama").strip().lower()
         if provider_norm == "openrouter":

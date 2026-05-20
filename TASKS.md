@@ -442,7 +442,7 @@ These endpoints were removed from the backend as unused by the current web clien
 ## Current Progress
 
 **Status**: Core product phases (1–11) complete. Phase 12 adds model preload, Ollama/env-driven grading model, optional vision OCR assist, HTTP error correctness, marking-guide/crop UX, accessible document rows, full **dark mode**, and contrast fixes.
-**Last Updated**: 2026-04-25
+**Last Updated**: 2026-05-06
 
 ### Priority TODOs
 
@@ -495,6 +495,7 @@ These endpoints were removed from the backend as unused by the current web clien
 - [x] Refactor `handleProcess` into helper stages while preserving region-driven regeneration (load guide -> delete -> read regions -> rebuild)
 - [x] Remove unused `startProcessingPoll` dead code from `GradePaper.jsx`
 - [x] Enforce whole-number score overrides in Exam Results (frontend + backend guard)
+- [x] Deduplicate `grade_answer` LLM prompt (grading/scoring rules in system prompt only)
 
 ### Next Steps
 
