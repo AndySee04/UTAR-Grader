@@ -1,6 +1,7 @@
 # UTAR Grader — Auto-Grading Website
 
-UTAR Grader is an AI-assisted exam grading system using OCR (TrOCR) and LLMs (Ollama/OpenRouter) to assist teachers.
+UTAR Grader is an AI-assisted exam grading system using OCR (TrOCR) and LLMs (Ollama/OpenRouter) to assist teachers. <br>
+This project was created as my Final Year Project (FYP) title.
 
 ## Features
 
